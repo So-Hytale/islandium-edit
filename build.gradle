@@ -1,0 +1,54 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+archivesBaseName = 'islandium-edit'
+
+dependencies {
+    // Islandium Core (compileOnly car fourni séparément comme plugin)
+    compileOnly project(':islandium-core')
+
+    // Hytale Server API (compileOnly car fourni par le serveur)
+    compileOnly files('../libs/HytaleServer.jar')
+
+    // JSON
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+
+    // Annotations
+    compileOnly 'org.jetbrains:annotations:24.1.0'
+}
+
+shadowJar {
+    archiveBaseName.set('islandium-edit')
+    archiveClassifier.set('')
+    archiveVersion.set(version)
+
+    manifest {
+        attributes(
+            'Main-Class': 'com.islandium.edit.EditPlugin',
+            'Implementation-Title': 'Islandium Edit (WorldEdit)',
+            'Implementation-Version': version,
+            'Implementation-Vendor-Id': 'com.islandium',
+            'Java-Version': '21'
+        )
+    }
+}
+
+jar {
+    archiveBaseName.set('islandium-edit')
+    archiveClassifier.set('slim')
+    archiveVersion.set(version)
+
+    manifest {
+        attributes(
+            'Main-Class': 'com.islandium.edit.EditPlugin',
+            'Implementation-Title': 'Islandium Edit (WorldEdit)',
+            'Implementation-Version': version,
+            'Implementation-Vendor-Id': 'com.islandium',
+            'Java-Version': '21'
+        )
+    }
+}
+
+build.dependsOn shadowJar

@@ -1,0 +1,13 @@
+{
+  "Group": "islandium",
+  "Name": "edit",
+  "Version": "1.0.0",
+  "Description": "WorldEdit pour Hytale - Outils d'edition de terrain avances",
+  "Main": "com.islandium.edit.EditPlugin",
+  "Website": "",
+  "ServerVersion": "*",
+  "Dependencies": {
+    "islandium:core": "*"
+  },
+  "IncludesAssetPack": false
+}
