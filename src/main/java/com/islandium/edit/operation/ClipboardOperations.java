@@ -594,44 +594,37 @@ public class ClipboardOperations {
     }
 
     /**
-     * Envoie une preview des blocs copies au client.
-     * Construit une BlockSelection native, l'injecte temporairement dans le BuilderState
-     * pour envoyer le paquet toPacketWithSelection(), puis restaure la selection originale.
+     * Utilise le systeme natif de copie de Hytale (computeSelectionCopy) pour remplir
+     * le clipboard du BuilderState. Cela active la preview du Paste Tool natif
+     * avec les vrais blocs en transparent.
      */
     @SuppressWarnings("deprecation")
     private void sendClipboardPreview(@NotNull Player player, @NotNull World world, int[] bounds) {
-        var connection = player.getPlayerConnection();
-        if (connection == null) return;
-
         BuilderToolsPlugin.BuilderState state = plugin.getSelectionManager().getBuilderState(player);
         if (state == null) return;
 
-        // Sauvegarder la selection actuelle
-        BlockSelection originalSelection = state.getSelection();
+        // computeSelectionCopy cree une nouvelle BlockSelection, appelle notre consumer
+        // pour la remplir avec les blocs, puis envoie sendUpdate() au client
+        state.computeSelectionCopy(selection -> {
+            // Definir les bounds de la selection
+            selection.setSelectionArea(
+                new Vector3i(bounds[0], bounds[1], bounds[2]),
+                new Vector3i(bounds[3], bounds[4], bounds[5])
+            );
 
-        // Construire la BlockSelection avec les blocs du monde
-        BlockSelection clipboardSelection = new BlockSelection();
-        clipboardSelection.setSelectionArea(
-            new Vector3i(bounds[0], bounds[1], bounds[2]),
-            new Vector3i(bounds[3], bounds[4], bounds[5])
-        );
-
-        for (int bx = bounds[0]; bx <= bounds[3]; bx++) {
-            for (int bz = bounds[2]; bz <= bounds[5]; bz++) {
-                long chunkIdx = ChunkUtil.indexChunkFromBlock(bx, bz);
-                WorldChunk chunk = world.getChunkIfLoaded(chunkIdx);
-                if (chunk != null) {
-                    for (int by = bounds[1]; by <= bounds[4]; by++) {
-                        clipboardSelection.copyFromAtWorld(bx, by, bz, chunk, null);
+            // Copier les blocs depuis le monde chunk par chunk
+            for (int bx = bounds[0]; bx <= bounds[3]; bx++) {
+                for (int bz = bounds[2]; bz <= bounds[5]; bz++) {
+                    long chunkIdx = ChunkUtil.indexChunkFromBlock(bx, bz);
+                    WorldChunk chunk = world.getChunkIfLoaded(chunkIdx);
+                    if (chunk != null) {
+                        for (int by = bounds[1]; by <= bounds[4]; by++) {
+                            selection.copyFromAtWorld(bx, by, bz, chunk, null);
+                        }
                     }
                 }
             }
-        }
-
-        // Injecter temporairement, envoyer le paquet, puis restaurer
-        state.setSelection(clipboardSelection);
-        connection.write(clipboardSelection.toPacketWithSelection());
-        state.setSelection(originalSelection);
+        });
     }
 
     @Nullable
