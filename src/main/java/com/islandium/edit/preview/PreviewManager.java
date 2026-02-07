@@ -45,10 +45,10 @@ public class PreviewManager {
     private static final Vector3f REFERENCE_COLOR = new Vector3f(1.0f, 0.2f, 0.2f);
 
     /** Duree d'affichage des debug shapes en secondes */
-    private static final float DISPLAY_DURATION = 2.0f;
+    private static final float DISPLAY_DURATION = 5.0f;
 
     /** Intervalle de rafraichissement de la preview persistante en ms */
-    private static final int REFRESH_INTERVAL_MS = 1000;
+    private static final int REFRESH_INTERVAL_MS = 3000;
 
     /** Limite de blocs pour la preview */
     private static final int MAX_PREVIEW_BLOCKS = 10000;
