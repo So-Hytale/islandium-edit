@@ -130,7 +130,7 @@ public class ClipboardOperations {
 
                 // Envoyer la preview au client
                 try {
-                    sendClipboardPreview(player, world, bounds);
+                    sendClipboardPreview(player, world, bounds, playerX, playerY, playerZ);
                 } catch (Exception e) {
                     plugin.getLogger().at(java.util.logging.Level.WARNING).log(
                         "[COPY] Erreur preview: " + e.getMessage());
@@ -597,9 +597,11 @@ public class ClipboardOperations {
      * Utilise le systeme natif de copie de Hytale (computeSelectionCopy) pour remplir
      * le clipboard du BuilderState. Cela active la preview du Paste Tool natif
      * avec les vrais blocs en transparent.
+     * La position du joueur est utilisee comme point d'origine pour le placement relatif.
      */
     @SuppressWarnings("deprecation")
-    private void sendClipboardPreview(@NotNull Player player, @NotNull World world, int[] bounds) {
+    private void sendClipboardPreview(@NotNull Player player, @NotNull World world,
+                                       int[] bounds, int playerX, int playerY, int playerZ) {
         BuilderToolsPlugin.BuilderState state = plugin.getSelectionManager().getBuilderState(player);
         if (state == null) return;
 
@@ -611,6 +613,9 @@ public class ClipboardOperations {
                 new Vector3i(bounds[0], bounds[1], bounds[2]),
                 new Vector3i(bounds[3], bounds[4], bounds[5])
             );
+
+            // Position du joueur comme point d'origine (pour le placement relatif du Paste Tool)
+            selection.setPosition(playerX, playerY, playerZ);
 
             // Copier les blocs depuis le monde chunk par chunk
             for (int bx = bounds[0]; bx <= bounds[3]; bx++) {
