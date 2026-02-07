@@ -1,9 +1,7 @@
 package com.islandium.edit.operation;
 
+import com.hypixel.hytale.builtin.buildertools.BuilderToolsPlugin;
 import com.hypixel.hytale.math.vector.Vector3i;
-import com.hypixel.hytale.protocol.packets.interface_.BlockChange;
-import com.hypixel.hytale.protocol.packets.interface_.EditorBlocksChange;
-import com.hypixel.hytale.protocol.packets.interface_.EditorSelection;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
@@ -596,18 +594,24 @@ public class ClipboardOperations {
     }
 
     /**
-     * Envoie une preview des blocs copies au client via EditorBlocksChange.
-     * Utilise advancedPreview pour afficher les blocs en mode previsualisation
-     * sans modifier le clipboard ni la selection du joueur.
+     * Envoie une preview des blocs copies au client.
+     * Construit une BlockSelection native, l'injecte temporairement dans le BuilderState
+     * pour envoyer le paquet toPacketWithSelection(), puis restaure la selection originale.
      */
     @SuppressWarnings("deprecation")
     private void sendClipboardPreview(@NotNull Player player, @NotNull World world, int[] bounds) {
         var connection = player.getPlayerConnection();
         if (connection == null) return;
 
-        // Construire la BlockSelection depuis le monde
-        BlockSelection nativeClipboard = new BlockSelection();
-        nativeClipboard.setSelectionArea(
+        BuilderToolsPlugin.BuilderState state = plugin.getSelectionManager().getBuilderState(player);
+        if (state == null) return;
+
+        // Sauvegarder la selection actuelle
+        BlockSelection originalSelection = state.getSelection();
+
+        // Construire la BlockSelection avec les blocs du monde
+        BlockSelection clipboardSelection = new BlockSelection();
+        clipboardSelection.setSelectionArea(
             new Vector3i(bounds[0], bounds[1], bounds[2]),
             new Vector3i(bounds[3], bounds[4], bounds[5])
         );
@@ -618,32 +622,16 @@ public class ClipboardOperations {
                 WorldChunk chunk = world.getChunkIfLoaded(chunkIdx);
                 if (chunk != null) {
                     for (int by = bounds[1]; by <= bounds[4]; by++) {
-                        nativeClipboard.copyFromAtWorld(bx, by, bz, chunk, null);
+                        clipboardSelection.copyFromAtWorld(bx, by, bz, chunk, null);
                     }
                 }
             }
         }
 
-        // Convertir en BlockChange[]
-        List<BlockChange> blockChanges = new ArrayList<>();
-        nativeClipboard.forEachBlock((x, y, z, block) -> {
-            blockChanges.add(new BlockChange(x, y, z, block.blockId(), (byte) block.rotation()));
-        });
-
-        if (blockChanges.isEmpty()) return;
-
-        // Creer le paquet EditorBlocksChange avec la selection et advancedPreview
-        EditorSelection editorSel = new EditorSelection(
-            bounds[0], bounds[1], bounds[2],
-            bounds[3], bounds[4], bounds[5]
-        );
-        BlockChange[] changes = blockChanges.toArray(new BlockChange[0]);
-        int blocksCount = changes.length;
-
-        EditorBlocksChange previewPacket = new EditorBlocksChange(
-            editorSel, changes, null, blocksCount, true
-        );
-        connection.write(previewPacket);
+        // Injecter temporairement, envoyer le paquet, puis restaurer
+        state.setSelection(clipboardSelection);
+        connection.write(clipboardSelection.toPacketWithSelection());
+        state.setSelection(originalSelection);
     }
 
     @Nullable
