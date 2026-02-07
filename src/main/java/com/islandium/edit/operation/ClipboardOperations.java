@@ -124,6 +124,7 @@ public class ClipboardOperations {
 
                 // Create a new holder with identity transform
                 clipboards.put(playerId, new ClipboardHolder(clipboard));
+
                 future.complete(BlockOperations.OperationResult.success("Copie effectuee", count));
             });
         });

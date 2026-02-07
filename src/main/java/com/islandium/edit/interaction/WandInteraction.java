@@ -16,7 +16,8 @@ import com.islandium.edit.EditPlugin;
 import java.util.logging.Level;
 
 /**
- * Interaction custom pour la wand de sélection.
+ * Interaction custom pour la wand de selection.
+ * Ecrit directement dans la BlockSelection native de Hytale.
  * - PRIMARY (clic gauche) = Pos1
  * - SECONDARY (clic droit) = Pos2
  */
@@ -35,7 +36,7 @@ public class WandInteraction extends SimpleInstantInteraction {
             return;
         }
 
-        // Récupérer le joueur depuis le contexte
+        // Recuperer le joueur depuis le contexte
         var entityRef = context.getEntity();
         if (entityRef == null || !entityRef.isValid()) {
             return;
@@ -46,17 +47,17 @@ public class WandInteraction extends SimpleInstantInteraction {
             return;
         }
 
-        // Store implémente ComponentAccessor, on peut l'utiliser directement
+        // Store implemente ComponentAccessor, on peut l'utiliser directement
         Player player = store.getComponent(entityRef, Player.getComponentType());
         if (player == null) {
             return;
         }
 
-        // Récupérer le bloc ciblé
+        // Recuperer le bloc cible
         BlockPosition targetBlockPos = context.getTargetBlock();
         if (targetBlockPos == null) {
-            // Aucun bloc ciblé = désélectionner la zone
-            plugin.getSelectionManager().clearSelectionVisual(player);
+            // Aucun bloc cible = deselectionner la zone
+            plugin.getSelectionManager().clearSelection(player);
             player.sendMessage(ColorUtil.parse("&7Selection effacee."));
             return;
         }
@@ -74,14 +75,13 @@ public class WandInteraction extends SimpleInstantInteraction {
             player.sendMessage(ColorUtil.parse("&aPos2: &f" + blockPos.getX() + ", " + blockPos.getY() + ", " + blockPos.getZ()));
         }
 
-        // Afficher le volume de la sélection si les deux positions sont définies
+        // Afficher le volume de la selection si les deux positions sont definies
         showSelectionInfo(plugin, player);
     }
 
     private void showSelectionInfo(EditPlugin plugin, Player player) {
-        // Utiliser les méthodes locales pour vérifier la sélection
-        if (plugin.getSelectionManager().hasLocalSelection(player)) {
-            long volume = plugin.getSelectionManager().getLocalVolume(player);
+        if (plugin.getSelectionManager().hasValidSelection(player)) {
+            long volume = plugin.getSelectionManager().getVolume(player);
             player.sendMessage(ColorUtil.parse("&7Selection: " + volume + " blocs"));
         }
     }
