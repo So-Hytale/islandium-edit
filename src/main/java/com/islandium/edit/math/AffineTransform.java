@@ -243,49 +243,31 @@ public class AffineTransform {
     /**
      * Returns if this transform flips the X axis (east/west).
      *
-     * La detection utilise le determinant de la sous-matrice XZ pour savoir
-     * s'il y a un flip reel (det < 0). Si det >= 0, c'est une rotation pure
-     * (meme si m00 et m22 sont negatifs — double flip = rotation 180).
+     * IMPORTANT: La convention DOIT etre coherente avec getYRotation().
+     * getYRotation() utilise m22 < 0 pour identifier flipZ, sinon flipX.
+     * On reprend exactement la meme logique ici.
      *
-     * Quand det < 0, on determine le TYPE de flip par la decomposition :
-     * - R(theta) x FlipZ donne m22 negatif quand cos(theta) > 0, et m00 negatif quand cos < 0
-     * - On utilise la meme logique que getYRotation() pour identifier le flip
-     *
-     * Convention: si det < 0 et que la decomposition donne flipX, retourne true.
-     * FlipX = m00 < 0 et m22 >= 0 apres extraction de la rotation.
-     * En pratique: det < 0 et m22 >= 0 (l'axe Z n'est pas flippe, donc c'est X).
-     * Cas speciaux (m22 == 0): on utilise m20 pour trancher.
+     * Le determinant de la sous-matrice XZ determine s'il y a un flip reel :
+     * - det >= 0 : rotation pure (pas de flip, meme si m00 et m22 sont negatifs)
+     * - det < 0 : un flip est present
      */
     public boolean isFlipX() {
         double det = m00 * m22 - m02 * m20;
-        if (det >= 0) return false; // Pas de flip (rotation pure)
-        // det < 0 : il y a un flip. Lequel ?
-        // FlipZ: m22 < 0 OU (m22==0 et m20 et m02 de meme signe = forme R*FlipZ)
-        // FlipX: tout le reste
-        if (Math.abs(m22) > 0.5) {
-            // m22 significatif : si m22 < 0 c'est flipZ, sinon flipX
-            return m22 > 0;
-        } else {
-            // m22 ~ 0, rotation 90 ou 270 deg + flip
-            // R(90)*FlipZ  = [0, -1;  -1, 0] -> m02=-1, m20=-1 (meme signe)
-            // R(90)*FlipX  = [0,  1;   1, 0] -> m02=+1, m20=+1 (meme signe aussi)
-            // R(270)*FlipZ = [0,  1;   1, 0] -> m02=+1, m20=+1
-            // R(270)*FlipX = [0, -1;  -1, 0] -> m02=-1, m20=-1
-            // En fait les deux sont indistinguables car FlipX = R(180)*FlipZ
-            // Convention: utiliser m20 > 0 comme indicateur flipX
-            return m20 > 0;
-        }
+        if (det >= 0) return false; // Rotation pure (double flip = rotation 180)
+        // det < 0 : flip present. Meme convention que getYRotation():
+        // m22 < 0 -> flipZ, sinon (m22 >= 0) -> flipX
+        return !(m22 < 0);
     }
 
     /**
      * Returns if this transform flips the Z axis (north/south).
-     * Meme logique que isFlipX() : det < 0 requis, puis on identifie le type.
+     * Meme logique que isFlipX(), coherente avec getYRotation().
      */
     public boolean isFlipZ() {
         double det = m00 * m22 - m02 * m20;
-        if (det >= 0) return false; // Pas de flip (rotation pure)
-        // det < 0 : il y a un flip. C'est flipZ si ce n'est pas flipX.
-        return !isFlipX();
+        if (det >= 0) return false; // Rotation pure (double flip = rotation 180)
+        // det < 0 : flip present. m22 < 0 -> flipZ
+        return m22 < 0;
     }
 
     /**
