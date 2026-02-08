@@ -569,12 +569,12 @@ public class EditCommand extends AbstractCommand {
 
     public static class PasteSubCommand extends AbstractCommand {
         private final EditPlugin plugin;
-        private final OptionalArg<String> skipAirArg;
+        private final OptionalArg<Boolean> skipAirArg;
 
         public PasteSubCommand(EditPlugin plugin) {
-            super("paste", "Coller le clipboard (-a pour ignorer l'air)");
+            super("paste", "Coller le clipboard (--a true pour ignorer l'air)");
             this.plugin = plugin;
-            skipAirArg = withOptionalArg("a", "Ignorer l'air (-a pour activer)", ArgTypes.STRING);
+            skipAirArg = withOptionalArg("a", "Ignorer l'air", ArgTypes.BOOLEAN);
         }
 
         @Override
@@ -587,8 +587,8 @@ public class EditCommand extends AbstractCommand {
                 return CompletableFuture.completedFuture(null);
             }
 
-            // -a active le skip air (n'importe quelle valeur = true)
-            boolean skipAir = ctx.get(skipAirArg) != null;
+            // /edit paste --a true  -> skip air
+            boolean skipAir = Boolean.TRUE.equals(ctx.get(skipAirArg));
 
             ctx.sendMessage(ColorUtil.parse("&7Collage en cours" + (skipAir ? " (sans air)" : "") + "..."));
             return plugin.getClipboardOperations().paste(player, skipAir)

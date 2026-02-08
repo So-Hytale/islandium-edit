@@ -107,7 +107,7 @@ public class ClipboardOperations {
 
                             BlockType bt = world.getBlockType(worldX, worldY, worldZ);
                             if (bt == null || bt == BlockType.EMPTY || "air".equalsIgnoreCase(bt.getId())) {
-                                clipboard.setBlock(x, y, z, "air", 0);
+                                // Ne pas stocker l'air dans le clipboard (absence = air)
                             } else {
                                 // Récupérer la rotation du bloc via le chunk
                                 int rotation = 0;
@@ -224,64 +224,74 @@ public class ClipboardOperations {
         int offsetZ = clipboard.getOffsetZ();
 
         int debugBlockIndex = 0;
-        for (Map.Entry<String, String> entry : clipboard.getBlocks().entrySet()) {
-            String key = entry.getKey();
-            String blockType = entry.getValue();
 
-            // Si skipAir est activé, ignorer les blocs d'air
-            if (skipAir && "air".equalsIgnoreCase(blockType)) {
-                continue;
-            }
+        // Itérer sur tout le volume du clipboard
+        int clipWidth = clipboard.getWidth();
+        int clipHeight = clipboard.getHeight();
+        int clipDepth = clipboard.getDepth();
 
-            int[] coords = ClipboardData.parseKey(key);
+        for (int cx = 0; cx < clipWidth; cx++) {
+            for (int cy = 0; cy < clipHeight; cy++) {
+                for (int cz = 0; cz < clipDepth; cz++) {
+                    String blockType = clipboard.getBlock(cx, cy, cz);
+                    boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
 
-            // Position relative au joueur (offset + position dans le clipboard)
-            double relX = offsetX + coords[0];
-            double relY = offsetY + coords[1];
-            double relZ = offsetZ + coords[2];
+                    // Si skipAir, ignorer les positions vides/air
+                    if (skipAir && isAir) {
+                        continue;
+                    }
 
-            // Appliquer la transformation autour du joueur (origin = 0,0,0)
-            double[] transformed = transform.apply(relX, relY, relZ);
+                    // Si pas skipAir et air, on doit quand même le placer (pour vider l'espace)
+                    if (isAir) {
+                        blockType = "air";
+                    }
 
-            // Corriger les erreurs de précision flottante (ex: cos(270°) ≈ -1.84e-16 au lieu de 0)
-            // qui causent des off-by-one avec Math.floor() (ex: -4.0000000000002 → floor = -5)
-            for (int i = 0; i < 3; i++) {
-                double rounded = Math.round(transformed[i]);
-                if (Math.abs(transformed[i] - rounded) < 1e-8) {
-                    transformed[i] = rounded;
+                    // Position relative au joueur (offset + position dans le clipboard)
+                    double relX = offsetX + cx;
+                    double relY = offsetY + cy;
+                    double relZ = offsetZ + cz;
+
+                    // Appliquer la transformation autour du joueur (origin = 0,0,0)
+                    double[] transformed = transform.apply(relX, relY, relZ);
+
+                    // Corriger les erreurs de précision flottante
+                    for (int i = 0; i < 3; i++) {
+                        double rounded = Math.round(transformed[i]);
+                        if (Math.abs(transformed[i] - rounded) < 1e-8) {
+                            transformed[i] = rounded;
+                        }
+                    }
+
+                    // Ajouter la position du joueur
+                    int worldX = playerX + (int) Math.floor(transformed[0]);
+                    int worldY = playerY + (int) Math.floor(transformed[1]);
+                    int worldZ = playerZ + (int) Math.floor(transformed[2]);
+
+                    positions.add(new int[]{worldX, worldY, worldZ});
+
+                    // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
+                    if (transform.isFlipX() ^ transform.isFlipZ()) {
+                        blockType = transformBlockName(blockType);
+                    }
+                    blockTypes.add(blockType);
+
+                    // Récupérer et transformer la rotation
+                    int originalRotation = clipboard.getRotation(cx, cy, cz);
+                    int transformedRotation = transformRotation(originalRotation, transform, blockType);
+                    blockRotations.add(transformedRotation);
+
+                    // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
+                    if (dbg != null && !"air".equalsIgnoreCase(blockType) && originalRotation != 0
+                            && dbg.matchesBlockFilter(blockType)) {
+                        dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
+                                relX, relY, relZ,
+                                transformed[0], transformed[1], transformed[2],
+                                worldX, worldY, worldZ,
+                                blockType, originalRotation, transformedRotation);
+                    }
+                    debugBlockIndex++;
                 }
             }
-
-            // Ajouter la position du joueur
-            int worldX = playerX + (int) Math.floor(transformed[0]);
-            int worldY = playerY + (int) Math.floor(transformed[1]);
-            int worldZ = playerZ + (int) Math.floor(transformed[2]);
-
-            positions.add(new int[]{worldX, worldY, worldZ});
-
-            // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
-            // XOR: swap uniquement quand UN SEUL flip est actif
-            // Double flip (flipX + flipZ) = 2 swaps = s'annulent = pas de swap
-            if (transform.isFlipX() ^ transform.isFlipZ()) {
-                blockType = transformBlockName(blockType);
-            }
-            blockTypes.add(blockType);
-
-            // Récupérer et transformer la rotation
-            int originalRotation = clipboard.getRotation(key);
-            int transformedRotation = transformRotation(originalRotation, transform, blockType);
-            blockRotations.add(transformedRotation);
-
-            // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
-            if (dbg != null && !"air".equalsIgnoreCase(blockType) && originalRotation != 0
-                    && dbg.matchesBlockFilter(blockType)) {
-                dbg.logPasteBlock(debugBlockIndex, coords[0], coords[1], coords[2],
-                        relX, relY, relZ,
-                        transformed[0], transformed[1], transformed[2],
-                        worldX, worldY, worldZ,
-                        blockType, originalRotation, transformedRotation);
-            }
-            debugBlockIndex++;
         }
 
         if (dbg != null) {
