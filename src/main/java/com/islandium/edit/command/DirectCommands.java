@@ -9,6 +9,7 @@ import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.islandium.core.api.util.ColorUtil;
 import com.islandium.edit.operation.ClipboardData;
 import com.islandium.edit.EditPlugin;
+import com.islandium.edit.math.RotationOverrides;
 import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.shape.*;
 import org.jetbrains.annotations.NotNull;
@@ -79,6 +80,9 @@ public class DirectCommands {
         // Preview
         registry.registerCommand(new PreviewCommand(plugin));
         registry.registerCommand(new PreviewInfoCommand(plugin));
+
+        // Admin
+        registry.registerCommand(new ReloadCommand(plugin));
     }
 
     // === Helper ===
@@ -1327,6 +1331,36 @@ public class DirectCommands {
             } catch (Exception e) {
                 ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
             }
+        }
+    }
+
+    // === Admin ===
+
+    public static class ReloadCommand extends AbstractCommand {
+        private final EditPlugin plugin;
+
+        public ReloadCommand(EditPlugin plugin) {
+            super("ereload", "Recharger la config (rotation-overrides.json)");
+            this.plugin = plugin;
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+
+            try {
+                RotationOverrides overrides = RotationOverrides.get();
+                if (overrides != null) {
+                    overrides.reload(java.nio.file.Path.of("mods"));
+                    ctx.sendMessage(ColorUtil.parse("&aRotation overrides recharges!"));
+                } else {
+                    RotationOverrides.init(java.nio.file.Path.of("mods"));
+                    ctx.sendMessage(ColorUtil.parse("&aRotation overrides initialises!"));
+                }
+            } catch (Exception e) {
+                ctx.sendMessage(ColorUtil.parse("&cErreur reload: " + e.getMessage()));
+            }
+            return CompletableFuture.completedFuture(null);
         }
     }
 

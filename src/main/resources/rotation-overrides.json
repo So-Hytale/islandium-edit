@@ -1,21 +1,39 @@
 {
-  "_comment": "Overrides de rotation pour les blocs lors des flips/rotations.",
-  "_usage": [
-    "Chaque entree definit un pattern de nom de bloc et les regles de transformation.",
-    "pattern: regex ou mot-cle a chercher dans le nom du bloc (contains match)",
-    "flipZ_swap_yaw: paires de yaw a echanger lors d'un flip Z [a, b] -> swap a<->b",
-    "flipX_swap_yaw: paires de yaw a echanger lors d'un flip X [a, b] -> swap a<->b",
-    "flipY_swap_pitch: paires de pitch a echanger lors d'un flip Y [a, b] -> swap a<->b",
-    "Yaw: 0=North(0deg), 1=East(90deg), 2=South(180deg), 3=West(270deg)",
-    "Pitch: 0=0deg, 1=90deg, 2=180deg, 3=270deg"
+  "_comment": "Overrides de rotation pour les blocs lors des flips (miroir).",
+  "_aide": [
+    "",
+    "=== COMMENT CA MARCHE ===",
+    "Quand on flip une construction, chaque bloc tourne.",
+    "Par defaut: flipZ echange Nord<->Sud (yaw 0<->2), flipX echange Est<->Ouest (yaw 1<->3).",
+    "Mais certains blocs asymetriques (coins, pentes) ont besoin de regles differentes.",
+    "",
+    "=== VALEURS DE YAW (orientation horizontale) ===",
+    "  0 = Nord",
+    "  1 = Est",
+    "  2 = Sud",
+    "  3 = Ouest",
+    "",
+    "=== OPTIONS PAR BLOC ===",
+    "  pattern:          mot-cle dans le nom du bloc (ex: 'Roof_Flat' matche 'Rock_Aqua_Brick_Roof_Flat')",
+    "  replace_standard: true = REMPLACE le comportement par defaut au lieu de l'ajouter",
+    "  flipZ_swap_yaw:   paires a echanger lors d'un miroir Nord/Sud  - ex: [[1, 3]] echange Est<->Ouest",
+    "  flipX_swap_yaw:   paires a echanger lors d'un miroir Est/Ouest - ex: [[0, 2]] echange Nord<->Sud",
+    ""
   ],
   "overrides": [
     {
       "pattern": "Roof_Flat",
-      "comment": "Les Roof_Flat ont une pente asymetrique - besoin de swaps DIFFERENTS du standard",
+      "comment": "Toits plats: pente asymetrique, les axes de flip sont inverses",
       "replace_standard": true,
       "flipZ_swap_yaw": [[1, 3]],
       "flipX_swap_yaw": [[0, 2]]
+    },
+    {
+      "pattern": "Fence_State_Definitions_Corner",
+      "comment": "Coins de barriere: bloc en L asymetrique",
+      "replace_standard": true,
+      "flipZ_swap_yaw": [[0, 3], [1, 2]],
+      "flipX_swap_yaw": [[0, 1], [2, 3]]
     }
   ]
 }
