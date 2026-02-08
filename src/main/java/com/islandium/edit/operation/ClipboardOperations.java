@@ -9,9 +9,11 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.math.util.ChunkUtil;
 import com.islandium.edit.EditPlugin;
+import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.history.EditAction;
 import com.islandium.edit.math.AffineTransform;
 import com.islandium.edit.math.BlockTransform;
+import com.islandium.edit.math.RotationOverrides;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -128,6 +130,25 @@ public class ClipboardOperations {
                 // Create a new holder with identity transform
                 clipboards.put(playerId, new ClipboardHolder(clipboard));
 
+                // Debug log
+                DebugLogger dbg = DebugLogger.get();
+                if (dbg != null) {
+                    dbg.logCopy(player.getDisplayName(), playerX, playerY, playerZ,
+                            bounds, width, height, depth, offsetX, offsetY, offsetZ, count);
+                    // Log résumé des blocs avec rotation
+                    dbg.log("COPY", "Blocks with rotation: " + clipboard.getRotations().size());
+                    for (Map.Entry<String, Integer> rotEntry : clipboard.getRotations().entrySet()) {
+                        String bt = clipboard.getBlocks().get(rotEntry.getKey());
+                        int[] rc = ClipboardData.parseKey(rotEntry.getKey());
+                        int ridx = rotEntry.getValue();
+                        int ry = ridx % 4;
+                        int rp = (ridx / 4) % 4;
+                        int rr = (ridx / 16) % 4;
+                        dbg.log("COPY", "  [" + bt + "] pos=(" + rc[0] + "," + rc[1] + "," + rc[2]
+                                + ") idx=" + ridx + " yaw=" + ry + " p=" + rp + " r=" + rr);
+                    }
+                }
+
                 // Envoyer la preview au client
                 try {
                     sendClipboardPreview(player, world, bounds, playerX, playerY, playerZ);
@@ -179,6 +200,19 @@ public class ClipboardOperations {
         ClipboardData clipboard = holder.getClipboard();
         AffineTransform transform = holder.getTransform();
 
+        // Debug log paste start
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logPasteStart(player.getDisplayName(), playerX, playerY, playerZ, skipAir, clipboard, transform);
+            // Log quelques points de test pour vérifier la matrice
+            double[] test1 = transform.apply(1, 0, 0);
+            dbg.logPointTransform("test X-axis", 1, 0, 0, test1[0], test1[1], test1[2]);
+            double[] test2 = transform.apply(0, 0, 1);
+            dbg.logPointTransform("test Z-axis", 0, 0, 1, test2[0], test2[1], test2[2]);
+            double[] test3 = transform.apply(0, 1, 0);
+            dbg.logPointTransform("test Y-axis", 0, 1, 0, test3[0], test3[1], test3[2]);
+        }
+
         // Construire la liste des positions, types de blocs et rotations avec transformation
         List<int[]> positions = new ArrayList<>();
         List<String> blockTypes = new ArrayList<>();
@@ -189,6 +223,7 @@ public class ClipboardOperations {
         int offsetY = clipboard.getOffsetY();
         int offsetZ = clipboard.getOffsetZ();
 
+        int debugBlockIndex = 0;
         for (Map.Entry<String, String> entry : clipboard.getBlocks().entrySet()) {
             String key = entry.getKey();
             String blockType = entry.getValue();
@@ -208,27 +243,64 @@ public class ClipboardOperations {
             // Appliquer la transformation autour du joueur (origin = 0,0,0)
             double[] transformed = transform.apply(relX, relY, relZ);
 
+            // Corriger les erreurs de précision flottante (ex: cos(270°) ≈ -1.84e-16 au lieu de 0)
+            // qui causent des off-by-one avec Math.floor() (ex: -4.0000000000002 → floor = -5)
+            for (int i = 0; i < 3; i++) {
+                double rounded = Math.round(transformed[i]);
+                if (Math.abs(transformed[i] - rounded) < 1e-8) {
+                    transformed[i] = rounded;
+                }
+            }
+
             // Ajouter la position du joueur
             int worldX = playerX + (int) Math.floor(transformed[0]);
             int worldY = playerY + (int) Math.floor(transformed[1]);
             int worldZ = playerZ + (int) Math.floor(transformed[2]);
 
             positions.add(new int[]{worldX, worldY, worldZ});
+
+            // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
+            // XOR: swap uniquement quand UN SEUL flip est actif
+            // Double flip (flipX + flipZ) = 2 swaps = s'annulent = pas de swap
+            if (transform.isFlipX() ^ transform.isFlipZ()) {
+                blockType = transformBlockName(blockType);
+            }
             blockTypes.add(blockType);
 
             // Récupérer et transformer la rotation
             int originalRotation = clipboard.getRotation(key);
-            int transformedRotation = transformRotation(originalRotation, transform);
+            int transformedRotation = transformRotation(originalRotation, transform, blockType);
             blockRotations.add(transformedRotation);
+
+            // Log uniquement les blocs non-air avec rotation (blocs orientés)
+            if (dbg != null && !"air".equalsIgnoreCase(blockType) && originalRotation != 0) {
+                dbg.logPasteBlock(debugBlockIndex, coords[0], coords[1], coords[2],
+                        relX, relY, relZ,
+                        transformed[0], transformed[1], transformed[2],
+                        worldX, worldY, worldZ,
+                        blockType, originalRotation, transformedRotation);
+            }
+            debugBlockIndex++;
+        }
+
+        if (dbg != null) {
+            dbg.log("PASTE", "Total blocks to paste: " + positions.size());
         }
 
         CompletableFuture<BlockOperations.OperationResult> future = new CompletableFuture<>();
         EditAction action = new EditAction("Paste clipboard");
         String worldId = world.getName();
 
+        final int totalToPaste = positions.size();
         processBlocksWithRotations(world, worldId, positions, blockTypes, blockRotations, action, result -> {
             if (result.success() && !action.isEmpty()) {
                 plugin.getEditHistory().pushAction(player.getUuid(), action);
+            }
+            // Debug log paste end
+            DebugLogger dbg2 = DebugLogger.get();
+            if (dbg2 != null) {
+                dbg2.logPasteEnd(totalToPaste, result.blocksAffected(),
+                        result.success() ? 0 : totalToPaste - result.blocksAffected());
             }
             future.complete(result);
         });
@@ -250,6 +322,13 @@ public class ClipboardOperations {
         AffineTransform oldTransform = holder.getTransform();
         AffineTransform newTransform = oldTransform.rotateY(degrees);
         holder.setTransform(newTransform);
+
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logRotate(player.getDisplayName(), degrees, oldTransform, newTransform);
+            dbg.logClipboardState("after rotate", holder);
+        }
 
         return BlockOperations.OperationResult.success("Rotation de " + degrees + " degres", holder.getBlockCount());
     }
@@ -283,6 +362,13 @@ public class ClipboardOperations {
         }
 
         holder.setTransform(flipTransform);
+
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logFlip(player.getDisplayName(), axis, oldTransform, flipTransform);
+            dbg.logClipboardState("after flip", holder);
+        }
 
         return BlockOperations.OperationResult.success("Flip sur l'axe " + axis.toUpperCase(), holder.getBlockCount());
     }
@@ -338,14 +424,23 @@ public class ClipboardOperations {
         }
 
         // Apply flip transform (WorldEdit style)
+        AffineTransform oldTransform = holder.getTransform();
         AffineTransform flipTransform = switch (axis) {
-            case "x" -> holder.getTransform().scale(-1, 1, 1);
-            case "y" -> holder.getTransform().scale(1, -1, 1);
-            case "z" -> holder.getTransform().scale(1, 1, -1);
-            default -> holder.getTransform();
+            case "x" -> oldTransform.scale(-1, 1, 1);
+            case "y" -> oldTransform.scale(1, -1, 1);
+            case "z" -> oldTransform.scale(1, 1, -1);
+            default -> oldTransform;
         };
 
         holder.setTransform(flipTransform);
+
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logFlipByLook(player.getDisplayName(), pitch, yaw, dirX, dirY, dirZ,
+                    axis, direction, oldTransform, flipTransform);
+            dbg.logClipboardState("after flipByLook", holder);
+        }
 
         return BlockOperations.OperationResult.success("Flip vers " + direction + " (axe " + axis.toUpperCase() + ")", holder.getBlockCount());
     }
@@ -379,14 +474,23 @@ public class ClipboardOperations {
         }
 
         // Apply flip
+        AffineTransform oldTransform = holder.getTransform();
         AffineTransform flipTransform = switch (axis) {
-            case "x" -> holder.getTransform().scale(-1, 1, 1);
-            case "y" -> holder.getTransform().scale(1, -1, 1);
-            case "z" -> holder.getTransform().scale(1, 1, -1);
-            default -> holder.getTransform();
+            case "x" -> oldTransform.scale(-1, 1, 1);
+            case "y" -> oldTransform.scale(1, -1, 1);
+            case "z" -> oldTransform.scale(1, 1, -1);
+            default -> oldTransform;
         };
 
         holder.setTransform(flipTransform);
+
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logFlip(player.getDisplayName(), axis + " (auto)", oldTransform, flipTransform);
+            dbg.logClipboardState("after flipAuto", holder);
+        }
+
         return BlockOperations.OperationResult.success("Flip sur l'axe " + axis.toUpperCase(), holder.getBlockCount());
     }
 
@@ -399,7 +503,17 @@ public class ClipboardOperations {
             return BlockOperations.OperationResult.failure("Clipboard vide");
         }
 
+        AffineTransform oldTransform = holder.getTransform();
         holder.setTransform(new AffineTransform());
+
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logSection("RESET TRANSFORM - " + player.getDisplayName());
+            dbg.log("RESET", "Old transform: " + oldTransform);
+            dbg.log("RESET", "New transform: identity");
+        }
+
         return BlockOperations.OperationResult.success("Transform reset", holder.getBlockCount());
     }
 
@@ -446,6 +560,25 @@ public class ClipboardOperations {
     // === Helpers ===
 
     /**
+     * Transforme le nom d'un bloc lors d'un flip (miroir).
+     * Inverse Corner_Left <-> Corner_Right et Inverted_Corner_Left <-> Inverted_Corner_Right.
+     */
+    @NotNull
+    private static String transformBlockName(@NotNull String blockType) {
+        // Utiliser des marqueurs temporaires pour éviter les doubles remplacements
+        if (blockType.contains("Inverted_Corner_Left")) {
+            return blockType.replace("Inverted_Corner_Left", "Inverted_Corner_Right");
+        } else if (blockType.contains("Inverted_Corner_Right")) {
+            return blockType.replace("Inverted_Corner_Right", "Inverted_Corner_Left");
+        } else if (blockType.contains("Corner_Left")) {
+            return blockType.replace("Corner_Left", "Corner_Right");
+        } else if (blockType.contains("Corner_Right")) {
+            return blockType.replace("Corner_Right", "Corner_Left");
+        }
+        return blockType;
+    }
+
+    /**
      * Transforme un index de rotation Hytale (0-63) selon la transformation appliquée.
      *
      * L'index de rotation Hytale encode yaw/pitch/roll avec 4 valeurs chacun (0, 90, 180, 270).
@@ -453,7 +586,7 @@ public class ClipboardOperations {
      *
      * Pour un flip ou rotation, on transforme les composantes individuellement.
      */
-    private int transformRotation(int rotationIndex, @NotNull AffineTransform transform) {
+    private int transformRotation(int rotationIndex, @NotNull AffineTransform transform, @NotNull String blockType) {
         if (rotationIndex == 0 && transform.isIdentity()) {
             return 0;
         }
@@ -466,6 +599,7 @@ public class ClipboardOperations {
 
         boolean flipX = transform.isFlipX();
         boolean flipZ = transform.isFlipZ();
+        boolean vFlip = transform.isVerticalFlip();
 
         // Appliquer la rotation Y du transform
         int yRotation = transform.getYRotation();
@@ -476,32 +610,65 @@ public class ClipboardOperations {
         }
 
         // Appliquer les flips
-        // Pour un miroir, on inverse les directions PERPENDICULAIRES à l'axe du miroir
-        //
-        // Flip X (miroir E/W): inverse est <-> ouest
-        // Flip Z (miroir N/S): inverse nord <-> sud
-        //
-        // Convention Hytale: yaw 0, 1, 2, 3
-        // Les deux flips doivent inverser les paires appropriées
-        //
-        // Après tests: flip X inverse 0<->2, flip Z inverse 1<->3
+        RotationOverrides overrides = RotationOverrides.get();
+
+        // FlipX (miroir est/ouest) : inverse les directions est(1) et ouest(3)
         if (flipX) {
-            if (yaw == 0) yaw = 2;
-            else if (yaw == 2) yaw = 0;
+            boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipX(blockType);
+            if (!skipStandard) {
+                // Swap standard : 1(Est) <-> 3(Ouest)
+                if (yaw == 1) yaw = 3;
+                else if (yaw == 3) yaw = 1;
+            }
+            // Appliquer les overrides (remplace OU ajoute selon replace_standard)
+            if (overrides != null) {
+                yaw = overrides.applyFlipXYaw(yaw, blockType);
+            }
         }
 
+        // FlipZ (miroir nord/sud) : inverse les directions nord(0) et sud(2)
         if (flipZ) {
-            if (yaw == 1) yaw = 3;
-            else if (yaw == 3) yaw = 1;
+            boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipZ(blockType);
+            if (!skipStandard) {
+                // Swap standard : 0(Nord) <-> 2(Sud)
+                if (yaw == 0) yaw = 2;
+                else if (yaw == 2) yaw = 0;
+            }
+            // Appliquer les overrides (remplace OU ajoute selon replace_standard)
+            if (overrides != null) {
+                yaw = overrides.applyFlipZYaw(yaw, blockType);
+            }
         }
 
-        if (transform.isVerticalFlip()) {
-            // Flip Y inverse le pitch
-            if (pitch == 1) pitch = 3;
-            else if (pitch == 3) pitch = 1;
+        if (vFlip) {
+            boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipY(blockType);
+            if (!skipStandard) {
+                // Flip Y standard : inverse le pitch
+                if (pitch == 1) pitch = 3;
+                else if (pitch == 3) pitch = 1;
+            }
+            // Appliquer les overrides
+            if (overrides != null) {
+                pitch = overrides.applyFlipYPitch(pitch, blockType);
+            }
         }
 
-        return yaw + pitch * 4 + roll * 16;
+        int newIndex = yaw + pitch * 4 + roll * 16;
+
+        // Debug log (seulement si rotation originale != 0, et pas air)
+        if (rotationIndex != 0 && !"air".equalsIgnoreCase(blockType)) {
+            DebugLogger dbg = DebugLogger.get();
+            if (dbg != null) {
+                int origYaw = rotationIndex % 4;
+                int origPitch = (rotationIndex / 4) % 4;
+                int origRoll = (rotationIndex / 16) % 4;
+                dbg.logRotationTransform(rotationIndex, origYaw, origPitch, origRoll,
+                        yRotation, flipX, flipZ, vFlip,
+                        yaw, pitch, roll, newIndex);
+            }
+        }
+
+        return newIndex;
     }
 
     private void processBlocksWithRotations(@NotNull World world,
@@ -532,17 +699,34 @@ public class ClipboardOperations {
                         int rotation = rotations.get(j);
 
                         try {
+                            // Lire l'ancien type et rotation AVANT de modifier
+                            long chunkIndex = ChunkUtil.indexChunkFromBlock(pos[0], pos[2]);
+                            WorldChunk chunk = world.getChunkIfLoaded(chunkIndex);
+
                             BlockType oldBt = world.getBlockType(pos[0], pos[1], pos[2]);
                             String oldType = (oldBt != null && oldBt != BlockType.EMPTY)
                                     ? oldBt.getId() : "air";
+                            int oldRotation = 0;
+                            if (chunk != null && !"air".equalsIgnoreCase(oldType)) {
+                                oldRotation = chunk.getRotationIndex(pos[0], pos[1], pos[2]);
+                            }
+
+                            // Skip si le bloc est identique (type + rotation)
+                            if (oldType.equals(blockType) && oldRotation == rotation) {
+                                processed[0]++;
+                                continue;
+                            }
 
                             // Pour "air", utiliser breakBlock au lieu de setBlock
                             if ("air".equalsIgnoreCase(blockType)) {
+                                // Skip air -> air
+                                if ("air".equalsIgnoreCase(oldType)) {
+                                    processed[0]++;
+                                    continue;
+                                }
                                 world.breakBlock(pos[0], pos[1], pos[2], 0);
                             } else {
                                 // Utiliser le chunk pour placer le bloc avec rotation
-                                long chunkIndex = ChunkUtil.indexChunkFromBlock(pos[0], pos[2]);
-                                WorldChunk chunk = world.getChunkIfLoaded(chunkIndex);
                                 if (chunk != null && rotation != 0) {
                                     // Récupérer le BlockType depuis l'AssetMap
                                     BlockType bt = BlockType.getAssetMap().getAsset(blockType);
@@ -564,7 +748,8 @@ public class ClipboardOperations {
                                     world.setBlock(pos[0], pos[1], pos[2], blockType);
                                 }
                             }
-                            action.addChange(worldId, pos[0], pos[1], pos[2], oldType, blockType);
+                            action.addChange(worldId, pos[0], pos[1], pos[2], oldType, blockType,
+                                    oldRotation, rotation);
                             processed[0]++;
                         } catch (Exception e) {
                             failed[0]++;

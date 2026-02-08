@@ -1,5 +1,6 @@
 package com.islandium.edit.math;
 
+import com.islandium.edit.debug.DebugLogger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -183,7 +184,17 @@ public class BlockTransform {
         }
 
         // Rebuild block ID
-        return buildBlockId(baseName, transformed);
+        String result = buildBlockId(baseName, transformed);
+
+        // Debug log si le block state a changé
+        if (!result.equals(blockId)) {
+            DebugLogger dbg = DebugLogger.get();
+            if (dbg != null) {
+                dbg.logBlockStateTransform(blockId, result, rotation, flipX, flipZ, vFlip);
+            }
+        }
+
+        return result;
     }
 
     /**

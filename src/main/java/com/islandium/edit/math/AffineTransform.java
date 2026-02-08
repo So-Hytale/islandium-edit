@@ -242,21 +242,54 @@ public class AffineTransform {
 
     /**
      * Returns if this transform flips the X axis (east/west).
+     *
+     * La detection utilise le determinant de la sous-matrice XZ pour savoir
+     * s'il y a un flip reel (det < 0). Si det >= 0, c'est une rotation pure
+     * (meme si m00 et m22 sont negatifs — double flip = rotation 180).
+     *
+     * Quand det < 0, on determine le TYPE de flip par la decomposition :
+     * - R(theta) x FlipZ donne m22 negatif quand cos(theta) > 0, et m00 negatif quand cos < 0
+     * - On utilise la meme logique que getYRotation() pour identifier le flip
+     *
+     * Convention: si det < 0 et que la decomposition donne flipX, retourne true.
+     * FlipX = m00 < 0 et m22 >= 0 apres extraction de la rotation.
+     * En pratique: det < 0 et m22 >= 0 (l'axe Z n'est pas flippe, donc c'est X).
+     * Cas speciaux (m22 == 0): on utilise m20 pour trancher.
      */
     public boolean isFlipX() {
-        return m00 < 0;
+        double det = m00 * m22 - m02 * m20;
+        if (det >= 0) return false; // Pas de flip (rotation pure)
+        // det < 0 : il y a un flip. Lequel ?
+        // FlipZ: m22 < 0 OU (m22==0 et m20 et m02 de meme signe = forme R*FlipZ)
+        // FlipX: tout le reste
+        if (Math.abs(m22) > 0.5) {
+            // m22 significatif : si m22 < 0 c'est flipZ, sinon flipX
+            return m22 > 0;
+        } else {
+            // m22 ~ 0, rotation 90 ou 270 deg + flip
+            // R(90)*FlipZ  = [0, -1;  -1, 0] -> m02=-1, m20=-1 (meme signe)
+            // R(90)*FlipX  = [0,  1;   1, 0] -> m02=+1, m20=+1 (meme signe aussi)
+            // R(270)*FlipZ = [0,  1;   1, 0] -> m02=+1, m20=+1
+            // R(270)*FlipX = [0, -1;  -1, 0] -> m02=-1, m20=-1
+            // En fait les deux sont indistinguables car FlipX = R(180)*FlipZ
+            // Convention: utiliser m20 > 0 comme indicateur flipX
+            return m20 > 0;
+        }
     }
 
     /**
      * Returns if this transform flips the Z axis (north/south).
+     * Meme logique que isFlipX() : det < 0 requis, puis on identifie le type.
      */
     public boolean isFlipZ() {
-        return m22 < 0;
+        double det = m00 * m22 - m02 * m20;
+        if (det >= 0) return false; // Pas de flip (rotation pure)
+        // det < 0 : il y a un flip. C'est flipZ si ce n'est pas flipX.
+        return !isFlipX();
     }
 
     /**
      * Returns if this affine transform represents a vertical flip.
-     * Used for block state transformations.
      */
     public boolean isVerticalFlip() {
         return m11 < 0;
@@ -269,15 +302,38 @@ public class AffineTransform {
      * @return rotation in degrees (0, 90, 180, or 270)
      */
     public int getYRotation() {
-        // Extract rotation from the matrix
-        // For a pure rotation matrix: m00 = cos, m02 = sin
-        double cos = m00;
-        double sin = m02;
+        // Extract rotation from the matrix, ignoring flip components.
+        // The XZ submatrix can be decomposed as: rotation * flip (if any).
+        // For a pure rotation: m00=cos, m02=sin, m20=-sin, m22=cos
+        // For rotation + flipZ: m00=cos, m02=sin, m20=sin, m22=-cos
+        // For rotation + flipX: m00=-cos, m02=-sin, m20=-sin, m22=cos
+        //
+        // The determinant of the XZ submatrix is +1 for pure rotation, -1 for rotation+flip.
+        // To extract just the rotation angle, we use atan2 on the appropriate elements.
 
-        // Handle potential flips by checking determinant
-        if (isHorizontalFlip()) {
-            // If flipped, we need to account for it
-            cos = -cos;
+        double det = m00 * m22 - m02 * m20;
+        double cos, sin;
+
+        if (det >= 0) {
+            // No flip: standard rotation matrix
+            cos = m00;
+            sin = m02;
+        } else {
+            // Has flip: extract rotation component
+            // If flipZ (m22 < 0): rotation matrix is [m00, m02; -m02, m00] * [1,0;0,-1]
+            //   so cos = m00, sin = m02
+            // If flipX (m00 < 0): rotation matrix is [-1,0;0,1] * [cos, sin; -sin, cos]
+            //   which gives [-cos, -sin; -sin, cos], so cos = -m00, sin = -m02
+            //   But we can also just use: cos = m22, sin = m20 for flipX
+            if (m22 < 0) {
+                // flipZ present
+                cos = m00;
+                sin = m02;
+            } else {
+                // flipX present
+                cos = m22;
+                sin = -m20;
+            }
         }
 
         // Determine rotation based on cos/sin values

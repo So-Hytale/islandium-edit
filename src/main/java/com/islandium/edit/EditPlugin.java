@@ -6,16 +6,19 @@ import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.islandium.core.IslandiumPlugin;
 import com.islandium.edit.command.DirectCommands;
 import com.islandium.edit.command.EditCommand;
+import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.history.EditHistory;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.Interaction;
 import com.hypixel.hytale.server.core.modules.interaction.interaction.config.SimpleInstantInteraction;
 import com.islandium.edit.interaction.WandInteraction;
+import com.islandium.edit.math.RotationOverrides;
 import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.operation.ClipboardOperations;
 import com.islandium.edit.preview.PreviewManager;
 import com.islandium.edit.selection.SelectionManager;
 import org.jetbrains.annotations.NotNull;
 
+import java.nio.file.Path;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -69,6 +72,12 @@ public class EditPlugin extends JavaPlugin {
             }
             this.corePlugin = IslandiumPlugin.get();
 
+            // 1b. Initialiser le debug logger et les rotation overrides
+            log(Level.INFO, "Initializing debug logger...");
+            DebugLogger.init(Path.of("mods"));
+            log(Level.INFO, "Loading rotation overrides...");
+            RotationOverrides.init(Path.of("mods"));
+
             // 2. Initialiser les managers
             log(Level.INFO, "Initializing managers...");
             this.selectionManager = new SelectionManager();
@@ -114,6 +123,9 @@ public class EditPlugin extends JavaPlugin {
         log(Level.INFO, "Shutting down IslandiumEdit...");
 
         try {
+            // Shutdown debug logger
+            DebugLogger.shutdown();
+
             if (blockOperations != null) {
                 blockOperations.shutdown();
             }

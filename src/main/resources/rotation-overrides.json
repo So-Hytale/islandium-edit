@@ -1,0 +1,21 @@
+{
+  "_comment": "Overrides de rotation pour les blocs lors des flips/rotations.",
+  "_usage": [
+    "Chaque entree definit un pattern de nom de bloc et les regles de transformation.",
+    "pattern: regex ou mot-cle a chercher dans le nom du bloc (contains match)",
+    "flipZ_swap_yaw: paires de yaw a echanger lors d'un flip Z [a, b] -> swap a<->b",
+    "flipX_swap_yaw: paires de yaw a echanger lors d'un flip X [a, b] -> swap a<->b",
+    "flipY_swap_pitch: paires de pitch a echanger lors d'un flip Y [a, b] -> swap a<->b",
+    "Yaw: 0=North(0deg), 1=East(90deg), 2=South(180deg), 3=West(270deg)",
+    "Pitch: 0=0deg, 1=90deg, 2=180deg, 3=270deg"
+  ],
+  "overrides": [
+    {
+      "pattern": "Roof_Flat",
+      "comment": "Les Roof_Flat ont une pente asymetrique - besoin de swaps DIFFERENTS du standard",
+      "replace_standard": true,
+      "flipZ_swap_yaw": [[1, 3]],
+      "flipX_swap_yaw": [[0, 2]]
+    }
+  ]
+}

@@ -41,6 +41,16 @@ public class EditAction {
     }
 
     /**
+     * Ajoute un changement de bloc avec rotation à cette action.
+     * Thread-safe.
+     */
+    public void addChange(@NotNull String worldId, int x, int y, int z,
+                          String oldBlockType, @NotNull String newBlockType,
+                          int oldRotation, int newRotation) {
+        changes.add(BlockChange.of(worldId, x, y, z, oldBlockType, newBlockType, oldRotation, newRotation));
+    }
+
+    /**
      * @return la description de l'action
      */
     @NotNull

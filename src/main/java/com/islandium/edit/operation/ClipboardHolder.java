@@ -115,6 +115,13 @@ public class ClipboardHolder {
 
         for (double[] corner : corners) {
             double[] transformed = transform.apply(corner[0], corner[1], corner[2]);
+            // Corriger les erreurs de précision flottante (cos/sin de 90°/270°)
+            for (int i = 0; i < 3; i++) {
+                double rounded = Math.round(transformed[i]);
+                if (Math.abs(transformed[i] - rounded) < 1e-8) {
+                    transformed[i] = rounded;
+                }
+            }
             minX = Math.min(minX, transformed[0]);
             minY = Math.min(minY, transformed[1]);
             minZ = Math.min(minZ, transformed[2]);

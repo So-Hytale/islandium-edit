@@ -7,6 +7,7 @@ import com.hypixel.hytale.protocol.packets.player.ClearDebugShapes;
 import com.hypixel.hytale.protocol.packets.player.DisplayDebug;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.islandium.edit.EditPlugin;
+import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.math.AffineTransform;
 import com.islandium.edit.operation.ClipboardData;
 import com.islandium.edit.operation.ClipboardHolder;
@@ -183,6 +184,14 @@ public class PreviewManager {
             // Appliquer la transformation autour du joueur (origin = 0,0,0)
             double[] transformed = transform.apply(relX, relY, relZ);
 
+            // Corriger les erreurs de précision flottante (ex: cos(270°) ≈ -1.84e-16 au lieu de 0)
+            for (int i = 0; i < 3; i++) {
+                double rounded = Math.round(transformed[i]);
+                if (Math.abs(transformed[i] - rounded) < 1e-8) {
+                    transformed[i] = rounded;
+                }
+            }
+
             // Ajouter la position du joueur + 0.5 pour le centre du bloc
             // Utiliser Math.floor pour être cohérent avec le paste
             double worldX = playerX + Math.floor(transformed[0]) + 0.5;
@@ -200,6 +209,13 @@ public class PreviewManager {
         }
 
         session.setPlacedCount(placed);
+
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logPreview(player.getDisplayName(), playerX, playerY, playerZ,
+                    isTransformed, session.isPersistent(), placed);
+        }
 
         // Programmer selon le mode
         if (session.isPersistent()) {

@@ -74,6 +74,7 @@ public class DirectCommands {
         // Info
         registry.registerCommand(new SizeCommand(plugin));
         registry.registerCommand(new DebugDirCommand(plugin));
+        registry.registerCommand(new RotDebugCommand(plugin));
 
         // Preview
         registry.registerCommand(new PreviewCommand(plugin));
@@ -1170,6 +1171,162 @@ public class DirectCommands {
             ctx.sendMessage(ColorUtil.parse("&7Pitch: &f" + String.format("%.1f", pitchDeg) + "°"));
 
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    // === Debug rotation ===
+
+    /**
+     * Commande /erotdebug - Reverse-engineering des indices de rotation Hytale.
+     *
+     * Usage:
+     *   /erotdebug x y z     - Affiche la rotation du bloc aux coordonnées
+     *   /erotdebug            - Scanne une zone 3x3x3 autour du joueur
+     *   /erotdebug scan <r>   - Scanne un rayon r autour du joueur
+     *
+     * Affiche: blockType, rotationIndex (0-63), décomposition yaw/pitch/roll
+     */
+    public static class RotDebugCommand extends AbstractCommand {
+        private final EditPlugin plugin;
+        private final OptionalArg<Integer> xArg;
+        private final OptionalArg<Integer> yArg;
+        private final OptionalArg<Integer> zArg;
+
+        public RotDebugCommand(EditPlugin plugin) {
+            super("erotdebug", "Debug rotation index d'un bloc (reverse-engineering)");
+            addAliases("erot");
+            this.plugin = plugin;
+            xArg = withOptionalArg("x", "Coord X (ou 'scan')", ArgTypes.INTEGER);
+            yArg = withOptionalArg("y", "Coord Y (ou rayon pour scan)", ArgTypes.INTEGER);
+            zArg = withOptionalArg("z", "Coord Z", ArgTypes.INTEGER);
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+            Player player = ctx.senderAs(Player.class);
+
+            var world = player.getWorld();
+            if (world == null) {
+                ctx.sendMessage(ColorUtil.parse("&cMonde introuvable"));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            Integer xVal = ctx.get(xArg);
+            Integer yVal = ctx.get(yArg);
+            Integer zVal = ctx.get(zArg);
+
+            // Si les 3 coordonnées sont fournies, debug ce bloc précis
+            if (xVal != null && yVal != null && zVal != null) {
+                debugSingleBlock(ctx, world, xVal, yVal, zVal);
+                return CompletableFuture.completedFuture(null);
+            }
+
+            // Sinon, scan autour du joueur
+            var transform = player.getTransformComponent();
+            var pos = transform.getPosition();
+            int px = (int) Math.floor(pos.getX());
+            int py = (int) Math.floor(pos.getY());
+            int pz = (int) Math.floor(pos.getZ());
+
+            int radius = (xVal != null) ? xVal : 2;  // rayon par défaut 2
+
+            ctx.sendMessage(ColorUtil.parse("&6=== RotDebug Scan (rayon " + radius + ") ==="));
+            ctx.sendMessage(ColorUtil.parse("&7Centre: &f" + px + ", " + py + ", " + pz));
+            ctx.sendMessage(ColorUtil.parse("&7Format: &f[x,y,z] type rot=INDEX (yaw=Y pitch=P roll=R)"));
+            ctx.sendMessage(ColorUtil.parse(""));
+
+            int found = 0;
+            for (int x = px - radius; x <= px + radius; x++) {
+                for (int y = py - radius; y <= py + radius; y++) {
+                    for (int z = pz - radius; z <= pz + radius; z++) {
+                        try {
+                            var bt = world.getBlockType(x, y, z);
+                            if (bt == null || bt == com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType.EMPTY
+                                    || "air".equalsIgnoreCase(bt.getId())) {
+                                continue;
+                            }
+
+                            long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(x, z);
+                            var chunk = world.getChunkIfLoaded(chunkIndex);
+                            int rotation = 0;
+                            if (chunk != null) {
+                                rotation = chunk.getRotationIndex(x, y, z);
+                            }
+
+                            // Seulement afficher les blocs avec rotation != 0
+                            // OU tous si c'est un scan petit rayon
+                            if (rotation != 0 || radius <= 2) {
+                                int yaw = rotation % 4;
+                                int pitch = (rotation / 4) % 4;
+                                int roll = (rotation / 16) % 4;
+
+                                String color = rotation != 0 ? "&e" : "&7";
+                                ctx.sendMessage(ColorUtil.parse(color + "[" + x + "," + y + "," + z + "] &f"
+                                        + bt.getId() + " &arot=" + rotation
+                                        + " &7(yaw=" + yaw + " pitch=" + pitch + " roll=" + roll + ")"));
+                                found++;
+                            }
+
+                            if (found >= 50) {
+                                ctx.sendMessage(ColorUtil.parse("&c... (limite 50 blocs atteinte)"));
+                                return CompletableFuture.completedFuture(null);
+                            }
+                        } catch (Exception e) {
+                            // Skip silently
+                        }
+                    }
+                }
+            }
+
+            if (found == 0) {
+                ctx.sendMessage(ColorUtil.parse("&7Aucun bloc avec rotation trouve dans la zone"));
+            } else {
+                ctx.sendMessage(ColorUtil.parse(""));
+                ctx.sendMessage(ColorUtil.parse("&6Total: &f" + found + " blocs"));
+            }
+
+            return CompletableFuture.completedFuture(null);
+        }
+
+        private void debugSingleBlock(CommandContext ctx, com.hypixel.hytale.server.core.universe.world.World world,
+                                       int x, int y, int z) {
+            try {
+                var bt = world.getBlockType(x, y, z);
+                if (bt == null || bt == com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType.EMPTY
+                        || "air".equalsIgnoreCase(bt.getId())) {
+                    ctx.sendMessage(ColorUtil.parse("&7Bloc a (" + x + ", " + y + ", " + z + "): &fair (pas de rotation)"));
+                    return;
+                }
+
+                long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(x, z);
+                var chunk = world.getChunkIfLoaded(chunkIndex);
+                int rotation = 0;
+                int blockId = 0;
+                if (chunk != null) {
+                    rotation = chunk.getRotationIndex(x, y, z);
+                    blockId = chunk.getBlock(x, y, z);
+                }
+
+                int yaw = rotation % 4;
+                int pitch = (rotation / 4) % 4;
+                int roll = (rotation / 16) % 4;
+
+                ctx.sendMessage(ColorUtil.parse("&6=== RotDebug ==="));
+                ctx.sendMessage(ColorUtil.parse("&ePosition: &f" + x + ", " + y + ", " + z));
+                ctx.sendMessage(ColorUtil.parse("&eBlock: &f" + bt.getId() + " &7(id=" + blockId + ")"));
+                ctx.sendMessage(ColorUtil.parse("&eRotation Index: &a" + rotation + " &7/ 63"));
+                ctx.sendMessage(ColorUtil.parse(""));
+                ctx.sendMessage(ColorUtil.parse("&eDecomposition (hypothese yaw+pitch*4+roll*16):"));
+                ctx.sendMessage(ColorUtil.parse("  &eYaw:   &f" + yaw + " &7(0=0d, 1=90d, 2=180d, 3=270d)"));
+                ctx.sendMessage(ColorUtil.parse("  &ePitch: &f" + pitch + " &7(0=0d, 1=90d, 2=180d, 3=270d)"));
+                ctx.sendMessage(ColorUtil.parse("  &eRoll:  &f" + roll + " &7(0=0d, 1=90d, 2=180d, 3=270d)"));
+                ctx.sendMessage(ColorUtil.parse(""));
+                ctx.sendMessage(ColorUtil.parse("&7Binaire: &f" + String.format("%6s", Integer.toBinaryString(rotation)).replace(' ', '0')
+                        + " &7(roll[5:4] pitch[3:2] yaw[1:0])"));
+            } catch (Exception e) {
+                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+            }
         }
     }
 

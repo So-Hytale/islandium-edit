@@ -1,11 +1,14 @@
 package com.islandium.edit.operation;
 
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.islandium.edit.EditPlugin;
+import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.history.BlockChange;
 import com.islandium.edit.history.EditAction;
 import com.islandium.edit.shape.Shape;
@@ -18,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -739,10 +743,35 @@ public class BlockOperations {
                     OperationResult.failure("Monde introuvable"));
         }
 
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logSection("UNDO - " + player.getDisplayName());
+            dbg.log("UNDO", "Action: " + action.getDescription());
+            dbg.log("UNDO", "Changes: " + action.getChanges().size() + " blocks");
+            // Log les 10 premiers changements
+            int sample = 0;
+            for (BlockChange change : action.getChanges()) {
+                if (sample >= 10) break;
+                dbg.log("UNDO", "  [" + sample + "] (" + change.x() + "," + change.y() + "," + change.z()
+                        + ") " + change.newBlockType() + " rot=" + change.newRotation()
+                        + " -> " + change.getOldBlockTypeSafe() + " rot=" + change.oldRotation());
+                sample++;
+            }
+            if (action.getChanges().size() > 10) {
+                dbg.log("UNDO", "  ... and " + (action.getChanges().size() - 10) + " more");
+            }
+        }
+
         // Restaurer les anciens blocs
         return applyChangesReverse(world, action.getChanges())
-                .thenApply(count -> OperationResult.success(
-                        "Undo: " + action.getDescription(), count));
+                .thenApply(count -> {
+                    DebugLogger dbg2 = DebugLogger.get();
+                    if (dbg2 != null) {
+                        dbg2.log("UNDO", "Completed: " + count + " blocks restored");
+                    }
+                    return OperationResult.success("Undo: " + action.getDescription(), count);
+                });
     }
 
     /**
@@ -777,10 +806,23 @@ public class BlockOperations {
                     OperationResult.failure("Monde introuvable"));
         }
 
+        // Debug log
+        DebugLogger dbg = DebugLogger.get();
+        if (dbg != null) {
+            dbg.logSection("REDO - " + player.getDisplayName());
+            dbg.log("REDO", "Action: " + action.getDescription());
+            dbg.log("REDO", "Changes: " + action.getChanges().size() + " blocks");
+        }
+
         // Remettre les nouveaux blocs
         return applyChangesForward(world, action.getChanges())
-                .thenApply(count -> OperationResult.success(
-                        "Redo: " + action.getDescription(), count));
+                .thenApply(count -> {
+                    DebugLogger dbg2 = DebugLogger.get();
+                    if (dbg2 != null) {
+                        dbg2.log("REDO", "Completed: " + count + " blocks re-applied");
+                    }
+                    return OperationResult.success("Redo: " + action.getDescription(), count);
+                });
     }
 
     // === Helpers ===
@@ -855,10 +897,12 @@ public class BlockOperations {
                                          @NotNull EditAction action,
                                          @NotNull Consumer<OperationResult> callback) {
         int total = positions.size();
-        int[] processed = {0};
-        int[] failed = {0};
+        AtomicInteger processed = new AtomicInteger(0);
+        AtomicInteger failed = new AtomicInteger(0);
 
         List<List<int[]>> batches = partition(positions, EditPlugin.BLOCKS_PER_BATCH);
+        int totalBatches = batches.size();
+        AtomicInteger completedBatches = new AtomicInteger(0);
 
         for (int i = 0; i < batches.size(); i++) {
             List<int[]> batch = batches.get(i);
@@ -882,18 +926,19 @@ public class BlockOperations {
                                 world.setBlock(pos[0], pos[1], pos[2], blockType);
                             }
                             action.addChange(worldId, pos[0], pos[1], pos[2], oldType, blockType);
-                            processed[0]++;
+                            processed.incrementAndGet();
                         } catch (Exception e) {
-                            failed[0]++;
+                            failed.incrementAndGet();
                         }
                     }
 
-                    if (processed[0] + failed[0] >= total) {
-                        if (failed[0] > 0) {
+                    if (completedBatches.incrementAndGet() >= totalBatches) {
+                        int failCount = failed.get();
+                        if (failCount > 0) {
                             callback.accept(OperationResult.partial(
-                                    failed[0] + " blocs ont echoue", processed[0]));
+                                    failCount + " blocs ont echoue", processed.get()));
                         } else {
-                            callback.accept(OperationResult.success("OK", processed[0]));
+                            callback.accept(OperationResult.success("OK", processed.get()));
                         }
                     }
                 });
@@ -911,10 +956,15 @@ public class BlockOperations {
             return future;
         }
 
-        int[] count = {0};
-        int[] processedBatches = {0};
+        AtomicInteger count = new AtomicInteger(0);
+        AtomicInteger completedBatches = new AtomicInteger(0);
 
-        List<List<BlockChange>> batches = partition(changes, EditPlugin.BLOCKS_PER_BATCH);
+        // Parcourir en ordre INVERSE pour restaurer correctement
+        // (le dernier bloc modifié doit être le premier restauré)
+        List<BlockChange> reversed = new ArrayList<>(changes);
+        Collections.reverse(reversed);
+
+        List<List<BlockChange>> batches = partition(reversed, EditPlugin.BLOCKS_PER_BATCH);
         int totalBatches = batches.size();
 
         System.out.println("[IslandiumEdit] Undo: " + changes.size() + " changes in " + totalBatches + " batches");
@@ -928,21 +978,39 @@ public class BlockOperations {
                     for (BlockChange change : batch) {
                         try {
                             String oldType = change.getOldBlockTypeSafe();
+                            int oldRotation = change.oldRotation();
                             // Pour "air", utiliser breakBlock au lieu de setBlock
                             if ("air".equalsIgnoreCase(oldType)) {
                                 world.breakBlock(change.x(), change.y(), change.z(), 0);
                             } else {
                                 world.setBlock(change.x(), change.y(), change.z(), oldType);
+                                // Restaurer la rotation si non-zero
+                                if (oldRotation != 0) {
+                                    long chunkIdx = ChunkUtil.indexChunkFromBlock(change.x(), change.z());
+                                    WorldChunk chunk = world.getChunkIfLoaded(chunkIdx);
+                                    if (chunk != null) {
+                                        BlockType bt = BlockType.getAssetMap().getAsset(oldType);
+                                        if (bt != null) {
+                                            int blockId = chunk.getBlock(change.x(), change.y(), change.z());
+                                            if (blockId > 0) {
+                                                chunk.setBlock(change.x(), change.y(), change.z(),
+                                                        blockId, bt, oldRotation, 0, 0);
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            count[0]++;
+                            count.incrementAndGet();
                         } catch (Exception e) {
-                            System.err.println("[IslandiumEdit] Undo error: " + e.getMessage());
+                            System.err.println("[IslandiumEdit] Undo error at (" +
+                                    change.x() + "," + change.y() + "," + change.z() +
+                                    ") block=" + change.getOldBlockTypeSafe() + " rot=" + change.oldRotation() + ": " + e.getMessage());
                         }
                     }
 
-                    processedBatches[0]++;
-                    if (processedBatches[0] >= totalBatches) {
-                        future.complete(count[0]);
+                    if (completedBatches.incrementAndGet() >= totalBatches) {
+                        System.out.println("[IslandiumEdit] Undo complete: " + count.get() + "/" + changes.size() + " blocks restored");
+                        future.complete(count.get());
                     }
                 });
             }, delay, TimeUnit.MILLISECONDS);
@@ -961,8 +1029,8 @@ public class BlockOperations {
             return future;
         }
 
-        int[] count = {0};
-        int[] processedBatches = {0};
+        AtomicInteger count = new AtomicInteger(0);
+        AtomicInteger completedBatches = new AtomicInteger(0);
 
         List<List<BlockChange>> batches = partition(changes, EditPlugin.BLOCKS_PER_BATCH);
         int totalBatches = batches.size();
@@ -976,21 +1044,39 @@ public class BlockOperations {
                     for (BlockChange change : batch) {
                         try {
                             String newType = change.newBlockType();
+                            int newRotation = change.newRotation();
                             // Pour "air", utiliser breakBlock au lieu de setBlock
                             if ("air".equalsIgnoreCase(newType)) {
                                 world.breakBlock(change.x(), change.y(), change.z(), 0);
                             } else {
                                 world.setBlock(change.x(), change.y(), change.z(), newType);
+                                // Restaurer la rotation si non-zero
+                                if (newRotation != 0) {
+                                    long chunkIdx = ChunkUtil.indexChunkFromBlock(change.x(), change.z());
+                                    WorldChunk chunk = world.getChunkIfLoaded(chunkIdx);
+                                    if (chunk != null) {
+                                        BlockType bt = BlockType.getAssetMap().getAsset(newType);
+                                        if (bt != null) {
+                                            int blockId = chunk.getBlock(change.x(), change.y(), change.z());
+                                            if (blockId > 0) {
+                                                chunk.setBlock(change.x(), change.y(), change.z(),
+                                                        blockId, bt, newRotation, 0, 0);
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            count[0]++;
+                            count.incrementAndGet();
                         } catch (Exception e) {
-                            System.err.println("[IslandiumEdit] Redo error: " + e.getMessage());
+                            System.err.println("[IslandiumEdit] Redo error at (" +
+                                    change.x() + "," + change.y() + "," + change.z() +
+                                    ") block=" + change.newBlockType() + " rot=" + change.newRotation() + ": " + e.getMessage());
                         }
                     }
 
-                    processedBatches[0]++;
-                    if (processedBatches[0] >= totalBatches) {
-                        future.complete(count[0]);
+                    if (completedBatches.incrementAndGet() >= totalBatches) {
+                        System.out.println("[IslandiumEdit] Redo complete: " + count.get() + "/" + changes.size() + " blocks restored");
+                        future.complete(count.get());
                     }
                 });
             }, delay, TimeUnit.MILLISECONDS);
