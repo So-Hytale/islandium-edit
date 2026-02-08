@@ -91,12 +91,12 @@ public class ClipboardOperations {
 
         UUID playerId = player.getUuid();
         CompletableFuture<BlockOperations.OperationResult> future = new CompletableFuture<>();
-
         // Exécuter la copie de manière asynchrone
         scheduler.execute(() -> {
             world.execute(() -> {
                 ClipboardData clipboard = new ClipboardData(width, height, depth, offsetX, offsetY, offsetZ);
                 int count = 0;
+                Map<String, Integer> blockCounts = new java.util.TreeMap<>();
 
                 for (int x = 0; x < width; x++) {
                     for (int y = 0; y < height; y++) {
@@ -121,6 +121,7 @@ public class ClipboardOperations {
                                     // Ignorer les erreurs de rotation
                                 }
                                 clipboard.setBlock(x, y, z, bt.getId(), rotation);
+                                blockCounts.merge(bt.getId(), 1, Integer::sum);
                                 count++;
                             }
                         }
@@ -135,6 +136,11 @@ public class ClipboardOperations {
                 if (dbg != null) {
                     dbg.logCopy(player.getDisplayName(), playerX, playerY, playerZ,
                             bounds, width, height, depth, offsetX, offsetY, offsetZ, count);
+                    // Log liste de tous les types de blocs copiés avec quantité
+                    dbg.log("COPY", "Block types (" + blockCounts.size() + " types):");
+                    for (Map.Entry<String, Integer> bc : blockCounts.entrySet()) {
+                        dbg.log("COPY", "  " + bc.getValue() + "x " + bc.getKey());
+                    }
                     // Log résumé des blocs avec rotation
                     dbg.log("COPY", "Blocks with rotation: " + clipboard.getRotations().size());
                     for (Map.Entry<String, Integer> rotEntry : clipboard.getRotations().entrySet()) {
