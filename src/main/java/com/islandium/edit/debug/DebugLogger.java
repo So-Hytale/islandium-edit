@@ -14,6 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Logger de debug dédié pour les opérations clipboard (copy/paste/rotate/flip).
@@ -31,6 +34,9 @@ public class DebugLogger {
     private final Path logFile;
     private final Object lock = new Object();
     private boolean enabled = true;
+
+    // Filtre de blocs: si non-vide, seuls les blocs dont le type contient un des patterns seront loggés
+    private final Set<String> blockFilters = Collections.synchronizedSet(new LinkedHashSet<>());
 
     private DebugLogger(@NotNull Path pluginDir) {
         this.logFile = pluginDir.resolve("debug-edit.log");
@@ -76,6 +82,46 @@ public class DebugLogger {
             instance.log("SHUTDOWN", "Debug logger stopped at " + LocalDateTime.now());
             instance = null;
         }
+    }
+
+    // === Filtre de blocs ===
+
+    /**
+     * Définit les patterns de filtre pour les logs de blocs.
+     * Quand le filtre est actif, seuls les blocs dont le type contient un des patterns seront loggés.
+     */
+    public void setBlockFilters(@NotNull Set<String> patterns) {
+        blockFilters.clear();
+        blockFilters.addAll(patterns);
+        log("FILTER", "Block filter set: " + (patterns.isEmpty() ? "(disabled)" : String.join(", ", patterns)));
+    }
+
+    /**
+     * Désactive le filtre (tous les blocs seront loggés).
+     */
+    public void clearBlockFilters() {
+        blockFilters.clear();
+        log("FILTER", "Block filter cleared (all blocks)");
+    }
+
+    /**
+     * Retourne les patterns de filtre actifs.
+     */
+    @NotNull
+    public Set<String> getBlockFilters() {
+        return Collections.unmodifiableSet(new LinkedHashSet<>(blockFilters));
+    }
+
+    /**
+     * Vérifie si un type de bloc passe le filtre.
+     * Si le filtre est vide, tout passe.
+     */
+    public boolean matchesBlockFilter(@NotNull String blockType) {
+        if (blockFilters.isEmpty()) return true;
+        for (String pattern : blockFilters) {
+            if (blockType.contains(pattern)) return true;
+        }
+        return false;
     }
 
     // === Méthodes de log génériques ===

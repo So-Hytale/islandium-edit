@@ -8,12 +8,15 @@ import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.islandium.core.api.util.ColorUtil;
 import com.islandium.edit.operation.ClipboardData;
+import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.EditPlugin;
 import com.islandium.edit.math.RotationOverrides;
 import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.shape.*;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -83,6 +86,7 @@ public class DirectCommands {
 
         // Admin
         registry.registerCommand(new ReloadCommand(plugin));
+        registry.registerCommand(new DebugFilterCommand());
     }
 
     // === Helper ===
@@ -508,12 +512,12 @@ public class DirectCommands {
 
     public static class PasteCommand extends AbstractCommand {
         private final EditPlugin plugin;
-        private final OptionalArg<Boolean> skipAirArg;
+        private final OptionalArg<String> skipAirArg;
 
         public PasteCommand(EditPlugin plugin) {
             super("epaste", "Coller le clipboard (-a pour ignorer l'air)");
             this.plugin = plugin;
-            skipAirArg = withOptionalArg("a", "Ignorer l'air", ArgTypes.BOOLEAN);
+            skipAirArg = withOptionalArg("a", "Ignorer l'air (-a pour activer)", ArgTypes.STRING);
         }
 
         @Override
@@ -531,7 +535,8 @@ public class DirectCommands {
                 plugin.getPreviewManager().stopPreview(player);
             }
 
-            boolean skipAir = Boolean.TRUE.equals(ctx.get(skipAirArg));
+            // -a active le skip air (n'importe quelle valeur = true)
+            boolean skipAir = ctx.get(skipAirArg) != null;
             ctx.sendMessage(ColorUtil.parse("&7Collage" + (skipAir ? " (sans air)" : "") + "..."));
             return plugin.getClipboardOperations().paste(player, skipAir)
                     .thenAccept(result -> sendResult(ctx, result))
@@ -1360,6 +1365,59 @@ public class DirectCommands {
             } catch (Exception e) {
                 ctx.sendMessage(ColorUtil.parse("&cErreur reload: " + e.getMessage()));
             }
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    /**
+     * /edebug <pattern1,pattern2,...> - Filtre les logs pour n'afficher que certains blocs
+     * /edebug clear - Supprime le filtre (tous les blocs)
+     * /edebug - Affiche les filtres actifs
+     */
+    public static class DebugFilterCommand extends AbstractCommand {
+        private final OptionalArg<String> patternsArg;
+
+        public DebugFilterCommand() {
+            super("edebug", "Filtrer les logs debug par type de bloc");
+            patternsArg = withOptionalArg("patterns", "Patterns (virgules) ou 'clear'", ArgTypes.STRING);
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+
+            DebugLogger dbg = DebugLogger.get();
+            if (dbg == null) {
+                ctx.sendMessage(ColorUtil.parse("&cDebug logger non initialise!"));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            String input = ctx.get(patternsArg);
+
+            if (input == null || input.isEmpty()) {
+                // Afficher les filtres actifs
+                Set<String> filters = dbg.getBlockFilters();
+                if (filters.isEmpty()) {
+                    ctx.sendMessage(ColorUtil.parse("&7Filtre debug: &fdesactive &7(tous les blocs)"));
+                } else {
+                    ctx.sendMessage(ColorUtil.parse("&7Filtre debug actif: &e" + String.join("&7, &e", filters)));
+                }
+            } else if ("clear".equalsIgnoreCase(input.trim())) {
+                dbg.clearBlockFilters();
+                ctx.sendMessage(ColorUtil.parse("&aFiltre debug supprime (tous les blocs seront logges)"));
+            } else {
+                // Parser les patterns séparés par virgules
+                String[] parts = input.split(",");
+                Set<String> patterns = new LinkedHashSet<>();
+                for (String p : parts) {
+                    String trimmed = p.trim();
+                    if (!trimmed.isEmpty()) patterns.add(trimmed);
+                }
+                dbg.setBlockFilters(patterns);
+                ctx.sendMessage(ColorUtil.parse("&aFiltre debug: &e" + String.join("&7, &e", patterns)));
+                ctx.sendMessage(ColorUtil.parse("&7Seuls les blocs contenant ces patterns seront logges."));
+            }
+
             return CompletableFuture.completedFuture(null);
         }
     }

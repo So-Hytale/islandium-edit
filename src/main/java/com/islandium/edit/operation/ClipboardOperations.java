@@ -272,8 +272,9 @@ public class ClipboardOperations {
             int transformedRotation = transformRotation(originalRotation, transform, blockType);
             blockRotations.add(transformedRotation);
 
-            // Log uniquement les blocs non-air avec rotation (blocs orientés)
-            if (dbg != null && !"air".equalsIgnoreCase(blockType) && originalRotation != 0) {
+            // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
+            if (dbg != null && !"air".equalsIgnoreCase(blockType) && originalRotation != 0
+                    && dbg.matchesBlockFilter(blockType)) {
                 dbg.logPasteBlock(debugBlockIndex, coords[0], coords[1], coords[2],
                         relX, relY, relZ,
                         transformed[0], transformed[1], transformed[2],
@@ -655,10 +656,10 @@ public class ClipboardOperations {
 
         int newIndex = yaw + pitch * 4 + roll * 16;
 
-        // Debug log (seulement si rotation originale != 0, et pas air)
+        // Debug log (seulement si rotation originale != 0, et pas air) + filtre
         if (rotationIndex != 0 && !"air".equalsIgnoreCase(blockType)) {
             DebugLogger dbg = DebugLogger.get();
-            if (dbg != null) {
+            if (dbg != null && dbg.matchesBlockFilter(blockType)) {
                 int origYaw = rotationIndex % 4;
                 int origPitch = (rotationIndex / 4) % 4;
                 int origRoll = (rotationIndex / 16) % 4;
