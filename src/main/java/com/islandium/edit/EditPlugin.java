@@ -37,9 +37,6 @@ public class EditPlugin extends JavaPlugin {
     /** ID de l'item wand custom */
     public static final String WAND_ITEM_ID = "Edit_Wand";
 
-    /** Limite de blocs par opération (pour éviter le lag) */
-    public static final int MAX_BLOCKS_PER_OPERATION = 100_000;
-
     /** Blocs traités par batch */
     public static final int BLOCKS_PER_BATCH = 5000;
 

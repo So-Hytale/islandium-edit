@@ -50,9 +50,6 @@ public class PreviewManager {
     /** Intervalle de rafraichissement de la preview persistante en ms */
     private static final int REFRESH_INTERVAL_MS = 3000;
 
-    /** Limite de blocs pour la preview */
-    private static final int MAX_PREVIEW_BLOCKS = 10000;
-
     public PreviewManager(@NotNull EditPlugin plugin) {
         this.plugin = plugin;
         this.activePreviews = new ConcurrentHashMap<>();
@@ -98,14 +95,6 @@ public class PreviewManager {
         // Si une preview est deja active, la stopper d'abord
         if (activePreviews.containsKey(playerId)) {
             stopPreview(playerId);
-        }
-
-        // Verifier la taille
-        int blockCount = holder.getBlockCount();
-        if (blockCount > MAX_PREVIEW_BLOCKS) {
-            return CompletableFuture.completedFuture(
-                PreviewResult.failure("Clipboard trop grand pour la preview: " + blockCount +
-                    " blocs (max: " + MAX_PREVIEW_BLOCKS + ")"));
         }
 
         CompletableFuture<PreviewResult> future = new CompletableFuture<>();

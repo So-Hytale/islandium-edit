@@ -1189,12 +1189,6 @@ public class DirectCommands {
             int centerY = (int) pos.getY();
             int centerZ = (int) pos.getZ();
 
-            int estimate = shape.estimateBlockCount();
-            if (estimate > EditPlugin.MAX_BLOCKS_PER_OPERATION) {
-                ctx.sendMessage(ColorUtil.parse("&cForme trop grande: ~" + estimate + " blocs (max: " + EditPlugin.MAX_BLOCKS_PER_OPERATION + ")"));
-                return CompletableFuture.completedFuture(null);
-            }
-
             ctx.sendMessage(ColorUtil.parse("&7Placement de " + shape.getDescription() + "..."));
             return plugin.getBlockOperations().placeShape(player, shape, centerX, centerY, centerZ, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))

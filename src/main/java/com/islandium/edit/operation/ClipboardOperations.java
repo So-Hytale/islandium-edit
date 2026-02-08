@@ -222,13 +222,6 @@ public class ClipboardOperations {
             blockRotations.add(transformedRotation);
         }
 
-        if (positions.size() > EditPlugin.MAX_BLOCKS_PER_OPERATION) {
-            return CompletableFuture.completedFuture(
-                    BlockOperations.OperationResult.failure(
-                            "Clipboard trop grand: " + positions.size() +
-                                    " blocs (max: " + EditPlugin.MAX_BLOCKS_PER_OPERATION + ")"));
-        }
-
         CompletableFuture<BlockOperations.OperationResult> future = new CompletableFuture<>();
         EditAction action = new EditAction("Paste clipboard");
         String worldId = world.getName();

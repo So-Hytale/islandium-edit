@@ -814,12 +814,6 @@ public class BlockOperations {
                     OperationResult.success("Aucun bloc a modifier", 0));
         }
 
-        if (positions.size() > EditPlugin.MAX_BLOCKS_PER_OPERATION) {
-            return CompletableFuture.completedFuture(
-                    OperationResult.failure("Operation trop grande: " + positions.size() +
-                            " blocs (max: " + EditPlugin.MAX_BLOCKS_PER_OPERATION + ")"));
-        }
-
         CompletableFuture<OperationResult> future = new CompletableFuture<>();
         EditAction action = new EditAction(description);
         String worldId = world.getName();
