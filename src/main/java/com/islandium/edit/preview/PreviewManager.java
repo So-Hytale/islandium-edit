@@ -34,6 +34,7 @@ public class PreviewManager {
 
     private final EditPlugin plugin;
     private final Map<UUID, PreviewSession> activePreviews;
+    private final Map<UUID, int[]> frozenPositions;
     private final ScheduledExecutorService scheduler;
 
     /** Couleur de la preview (bleu) */
@@ -45,6 +46,12 @@ public class PreviewManager {
     /** Couleur du point de reference (rouge) - position joueur / centre du miroir */
     private static final Vector3f REFERENCE_COLOR = new Vector3f(1.0f, 0.2f, 0.2f);
 
+    /** Couleur de la preview figee (vert) */
+    private static final Vector3f FROZEN_COLOR = new Vector3f(0.2f, 1.0f, 0.4f);
+
+    /** Couleur du point de reference fige (jaune) */
+    private static final Vector3f FROZEN_REFERENCE_COLOR = new Vector3f(1.0f, 0.9f, 0.2f);
+
     /** Duree d'affichage des debug shapes en secondes */
     private static final float DISPLAY_DURATION = 5.0f;
 
@@ -54,6 +61,7 @@ public class PreviewManager {
     public PreviewManager(@NotNull EditPlugin plugin) {
         this.plugin = plugin;
         this.activePreviews = new ConcurrentHashMap<>();
+        this.frozenPositions = new ConcurrentHashMap<>();
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "IslandiumEdit-Preview");
             t.setDaemon(true);
@@ -139,10 +147,20 @@ public class PreviewManager {
         }
 
         var pos = transformComponent.getPosition();
-        // Position en blocs (floor pour avoir le bloc où se trouve le joueur)
-        int playerX = (int) Math.floor(pos.getX());
-        int playerY = (int) Math.floor(pos.getY());
-        int playerZ = (int) Math.floor(pos.getZ());
+
+        // Utiliser la position figee si disponible, sinon la position du joueur
+        int playerX, playerY, playerZ;
+        boolean isFrozen = frozenPositions.containsKey(playerId);
+        if (isFrozen) {
+            int[] frozen = frozenPositions.get(playerId);
+            playerX = frozen[0];
+            playerY = frozen[1];
+            playerZ = frozen[2];
+        } else {
+            playerX = (int) Math.floor(pos.getX());
+            playerY = (int) Math.floor(pos.getY());
+            playerZ = (int) Math.floor(pos.getZ());
+        }
 
         ClipboardData clipboard = holder.getClipboard();
         AffineTransform transform = holder.getTransform();
@@ -155,11 +173,12 @@ public class PreviewManager {
         List<DisplayDebug> shapes = new ArrayList<>();
         int placed = 0;
 
-        // Cube rouge pour le point de référence (position du joueur)
-        shapes.add(createBlockCube(playerX + 0.5, playerY + 0.5, playerZ + 0.5, REFERENCE_COLOR));
+        // Cube de reference: jaune si fige, rouge sinon
+        Vector3f refColor = isFrozen ? FROZEN_REFERENCE_COLOR : REFERENCE_COLOR;
+        shapes.add(createBlockCube(playerX + 0.5, playerY + 0.5, playerZ + 0.5, refColor));
 
-        // Couleur selon si une transformation est appliquée
-        Vector3f color = isTransformed ? TRANSFORMED_COLOR : PREVIEW_COLOR;
+        // Couleur: vert si fige, cyan si transforme, bleu sinon
+        Vector3f color = isFrozen ? FROZEN_COLOR : (isTransformed ? TRANSFORMED_COLOR : PREVIEW_COLOR);
 
         // WorldEdit style: transform around PLAYER position (origin = 0,0,0)
         // Le joueur est le point central du miroir/rotation
@@ -305,6 +324,9 @@ public class PreviewManager {
     @SuppressWarnings("deprecation")
     public void stopPreview(UUID playerId) {
         PreviewSession session = activePreviews.remove(playerId);
+        // Defiger aussi
+        frozenPositions.remove(playerId);
+
         if (session == null) {
             return;
         }
@@ -331,6 +353,49 @@ public class PreviewManager {
         stopPreview(player.getUuid());
     }
 
+    // === Freeze (figer la position de la preview) ===
+
+    /**
+     * Fige la preview a la position actuelle du joueur.
+     * La preview continuera de s'afficher mais a cette position fixe.
+     */
+    @SuppressWarnings("deprecation")
+    public void freezeAt(@NotNull Player player) {
+        var transformComponent = player.getTransformComponent();
+        if (transformComponent == null) return;
+
+        var pos = transformComponent.getPosition();
+        int x = (int) Math.floor(pos.getX());
+        int y = (int) Math.floor(pos.getY());
+        int z = (int) Math.floor(pos.getZ());
+
+        frozenPositions.put(player.getUuid(), new int[]{x, y, z});
+    }
+
+    /**
+     * Defige la preview (reprend le suivi du joueur).
+     */
+    @SuppressWarnings("deprecation")
+    public void unfreeze(@NotNull Player player) {
+        frozenPositions.remove(player.getUuid());
+    }
+
+    /**
+     * Verifie si la preview est figee.
+     */
+    @SuppressWarnings("deprecation")
+    public boolean isFrozen(@NotNull Player player) {
+        return frozenPositions.containsKey(player.getUuid());
+    }
+
+    /**
+     * Retourne la position figee ou null.
+     */
+    @SuppressWarnings("deprecation")
+    public int[] getFrozenPosition(@NotNull Player player) {
+        return frozenPositions.get(player.getUuid());
+    }
+
     /**
      * Verifie si une preview est active.
      */
@@ -354,6 +419,7 @@ public class PreviewManager {
             stopPreview(playerId);
         }
         activePreviews.clear();
+        frozenPositions.clear();
         scheduler.shutdown();
     }
 

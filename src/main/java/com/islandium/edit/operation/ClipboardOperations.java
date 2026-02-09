@@ -200,11 +200,20 @@ public class ClipboardOperations {
 
     /**
      * Colle le clipboard du joueur à sa position actuelle.
+     */
+    public CompletableFuture<BlockOperations.OperationResult> paste(@NotNull Player player, boolean skipAir) {
+        return paste(player, skipAir, null);
+    }
+
+    /**
+     * Colle le clipboard du joueur a une position donnee (ou position actuelle si null).
      * The transform is applied at paste time (WorldEdit style).
      *
      * @param skipAir si true, les blocs d'air du clipboard sont ignorés
+     * @param positionOverride position [x,y,z] a utiliser au lieu de la position du joueur, ou null
      */
-    public CompletableFuture<BlockOperations.OperationResult> paste(@NotNull Player player, boolean skipAir) {
+    public CompletableFuture<BlockOperations.OperationResult> paste(@NotNull Player player, boolean skipAir,
+                                                                      int[] positionOverride) {
         ClipboardHolder holder = clipboards.get(player.getUuid());
         if (holder == null || holder.isEmpty()) {
             return CompletableFuture.completedFuture(
@@ -217,19 +226,24 @@ public class ClipboardOperations {
                     BlockOperations.OperationResult.failure("Monde introuvable"));
         }
 
-        // Position du joueur
-        var transformComponent = player.getTransformComponent();
-        if (transformComponent == null) {
-            return CompletableFuture.completedFuture(
-                    BlockOperations.OperationResult.failure("Position joueur introuvable"));
-        }
+        int playerX, playerY, playerZ;
 
-        var pos = transformComponent.getPosition();
-        // Utiliser Math.floor pour avoir le même comportement que la preview
-        // (int) tronque vers 0, Math.floor arrondit vers le bas
-        int playerX = (int) Math.floor(pos.getX());
-        int playerY = (int) Math.floor(pos.getY());
-        int playerZ = (int) Math.floor(pos.getZ());
+        if (positionOverride != null) {
+            playerX = positionOverride[0];
+            playerY = positionOverride[1];
+            playerZ = positionOverride[2];
+        } else {
+            var transformComponent = player.getTransformComponent();
+            if (transformComponent == null) {
+                return CompletableFuture.completedFuture(
+                        BlockOperations.OperationResult.failure("Position joueur introuvable"));
+            }
+
+            var pos = transformComponent.getPosition();
+            playerX = (int) Math.floor(pos.getX());
+            playerY = (int) Math.floor(pos.getY());
+            playerZ = (int) Math.floor(pos.getZ());
+        }
 
         ClipboardData clipboard = holder.getClipboard();
         AffineTransform transform = holder.getTransform();
@@ -609,7 +623,7 @@ public class ClipboardOperations {
      * Inverse Corner_Left <-> Corner_Right et Inverted_Corner_Left <-> Inverted_Corner_Right.
      */
     @NotNull
-    private static String transformBlockName(@NotNull String blockType) {
+    public static String transformBlockName(@NotNull String blockType) {
         // Utiliser des marqueurs temporaires pour éviter les doubles remplacements
         if (blockType.contains("Inverted_Corner_Left")) {
             return blockType.replace("Inverted_Corner_Left", "Inverted_Corner_Right");
@@ -631,7 +645,7 @@ public class ClipboardOperations {
      *
      * Pour un flip ou rotation, on transforme les composantes individuellement.
      */
-    private int transformRotation(int rotationIndex, @NotNull AffineTransform transform, @NotNull String blockType) {
+    public int transformRotation(int rotationIndex, @NotNull AffineTransform transform, @NotNull String blockType) {
         if (rotationIndex == 0 && transform.isIdentity()) {
             return 0;
         }

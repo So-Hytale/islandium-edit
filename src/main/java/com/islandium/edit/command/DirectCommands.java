@@ -90,6 +90,9 @@ public class DirectCommands {
         registry.registerCommand(new PreviewStopCommand(plugin));
         registry.registerCommand(new PreviewInfoCommand(plugin));
 
+        // Freeze
+        registry.registerCommand(new FreezeCommand(plugin));
+
         // Reset
         registry.registerCommand(new NoneCommand(plugin));
 
@@ -564,6 +567,14 @@ public class DirectCommands {
                 return CompletableFuture.completedFuture(null);
             }
 
+            // Recuperer la position figee avant de defiger
+            int[] frozenPos = plugin.getFreezeManager().getFrozenPosition(player);
+
+            // Defiger les vrais blocs si actif (restaurer les originaux)
+            if (plugin.getFreezeManager().isFrozen(player)) {
+                plugin.getFreezeManager().unfreeze(player);
+            }
+
             // Arreter la preview et masquer le HUD
             if (plugin.getPreviewManager().hasActivePreview(player)) {
                 plugin.getPreviewManager().stopPreview(player);
@@ -573,7 +584,9 @@ public class DirectCommands {
             // /epaste --a true  -> skip air
             boolean skipAir = Boolean.TRUE.equals(ctx.get(skipAirArg));
             ctx.sendMessage(ColorUtil.parse("&7Collage" + (skipAir ? " (sans air)" : "") + "..."));
-            return plugin.getClipboardOperations().paste(player, skipAir)
+
+            // Utiliser la position figee si disponible, sinon position actuelle
+            return plugin.getClipboardOperations().paste(player, skipAir, frozenPos)
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
         }
@@ -1411,6 +1424,52 @@ public class DirectCommands {
         }
     }
 
+    // === Freeze ===
+
+    public static class FreezeCommand extends AbstractCommand {
+        private final EditPlugin plugin;
+
+        public FreezeCommand(EditPlugin plugin) {
+            super("efig", "Figer/defiger la preview (place les vrais blocs)");
+            this.plugin = plugin;
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+            Player player = ctx.senderAs(Player.class);
+
+            // Toggle: si deja fige -> defiger
+            if (plugin.getFreezeManager().isFrozen(player)) {
+                int restored = plugin.getFreezeManager().unfreeze(player);
+                if (restored >= 0) {
+                    ctx.sendMessage(ColorUtil.parse("&aDefige! &7(" + restored + " blocs restaures)"));
+                } else {
+                    ctx.sendMessage(ColorUtil.parse("&cErreur lors du defigeage"));
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+
+            // Sinon -> figer
+            if (!plugin.getClipboardOperations().hasClipboard(player)) {
+                ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            ctx.sendMessage(ColorUtil.parse("&7Figeage en cours..."));
+            int placed = plugin.getFreezeManager().freeze(player);
+            if (placed >= 0) {
+                // Figer aussi la position de la preview debug
+                plugin.getPreviewManager().freezeAt(player);
+                ctx.sendMessage(ColorUtil.parse("&aFige! &7(" + placed + " blocs places)"));
+                ctx.sendMessage(ColorUtil.parse("&7Deplacez-vous pour inspecter. /efig pour defiger, /epaste pour confirmer."));
+            } else {
+                ctx.sendMessage(ColorUtil.parse("&cErreur: clipboard vide ou monde introuvable"));
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
     // === Reset ===
 
     public static class NoneCommand extends AbstractCommand {
@@ -1426,6 +1485,11 @@ public class DirectCommands {
         public CompletableFuture<Void> execute(CommandContext ctx) {
             if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
             Player player = ctx.senderAs(Player.class);
+
+            // Defiger les vrais blocs si actif
+            if (plugin.getFreezeManager().isFrozen(player)) {
+                plugin.getFreezeManager().unfreeze(player);
+            }
 
             // Arreter la preview
             if (plugin.getPreviewManager().hasActivePreview(player)) {
