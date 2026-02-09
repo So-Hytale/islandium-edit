@@ -530,18 +530,10 @@ public class DirectCommands {
                                         ctx.sendMessage(ColorUtil.parse("&aCoupe: " + copied + " blocs"));
                                         // Afficher le HUD Edit
                                         plugin.getEditHudManager().showHud(player);
-                                        // Lancer la preview persistante automatiquement apres coupe
-                                        return plugin.getPreviewManager().startPersistentPreview(player)
-                                                .thenAccept(previewResult -> {
-                                                    if (previewResult.success()) {
-                                                        ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /estop pour annuler"));
-                                                    }
-                                                })
-                                                .thenApply(v -> null);
                                     } else {
                                         sendResult(ctx, clearResult);
-                                        return CompletableFuture.completedFuture((Void) null);
                                     }
+                                    return CompletableFuture.completedFuture((Void) null);
                                 });
                     });
         }

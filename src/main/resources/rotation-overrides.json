@@ -26,11 +26,11 @@
     "  flipX_swap_yaw:   paires a echanger lors d'un miroir Est/Ouest - ex: [[0, 2]] echange Nord<->Sud",
     ""
   ],
-  "use_native_flip": true,
+  "use_native_flip": false,
   "overrides": [
     {
       "pattern": "Roof_Flat",
-      "comment": "Toits plats: pente asymetrique, les axes de flip sont inverses",
+      "comment": "Toits plats: pente asymetrique, les axes de flip sont inverses par rapport au standard",
       "replace_standard": true,
       "flipZ_swap_yaw": [[1, 3]],
       "flipX_swap_yaw": [[0, 2]]
