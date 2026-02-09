@@ -49,7 +49,7 @@ public class PreviewManager {
     private static final float DISPLAY_DURATION = 5.0f;
 
     /** Intervalle de rafraichissement de la preview persistante en ms */
-    private static final int REFRESH_INTERVAL_MS = 3000;
+    private static final int REFRESH_INTERVAL_MS = 1000;
 
     public PreviewManager(@NotNull EditPlugin plugin) {
         this.plugin = plugin;

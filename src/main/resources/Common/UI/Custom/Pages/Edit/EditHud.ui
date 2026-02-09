@@ -1,0 +1,107 @@
+Group #EditHud {
+  LayoutMode: Top;
+  Background: (Color: #0a0f1acc);
+  Anchor: (Width: 210, Height: 190, Right: 10, Top: 580);
+  Padding: (Left: 10, Right: 10, Top: 6, Bottom: 6);
+  Group #HeaderRow {
+    LayoutMode: Left;
+    Anchor: (Height: 24, Left: -10, Right: -10, Top: -6);
+    Background: (Color: #151d2a);
+    Padding: (Horizontal: 10);
+    Label #Header {
+      FlexWeight: 1;
+      Text: "EDIT";
+      Style: (FontSize: 13, TextColor: #4dd0e1, RenderBold: true, HorizontalAlignment: Center, VerticalAlignment: Center);
+    }
+  }
+  Group #Sep1 {
+    Background: (Color: #2a3a5c);
+    Anchor: (Height: 1, Top: 4, Bottom: 3);
+  }
+  Group #StatusRow {
+    LayoutMode: Left;
+    Anchor: (Height: 20);
+    Label #StatusLabel {
+      Anchor: (Width: 55);
+      Text: "Status:";
+      Style: (FontSize: 10, TextColor: #808080, VerticalAlignment: Center);
+    }
+    Label #StatusValue {
+      FlexWeight: 1;
+      Text: "---";
+      Style: (FontSize: 11, TextColor: #69f0ae, VerticalAlignment: Center, RenderBold: true);
+    }
+  }
+  Group #BlocksRow {
+    LayoutMode: Left;
+    Anchor: (Height: 20, Top: 1);
+    Label #BlocksLabel {
+      Anchor: (Width: 55);
+      Text: "Blocs:";
+      Style: (FontSize: 10, TextColor: #808080, VerticalAlignment: Center);
+    }
+    Label #BlocksValue {
+      FlexWeight: 1;
+      Text: "0";
+      Style: (FontSize: 11, TextColor: #82b1ff, VerticalAlignment: Center);
+    }
+  }
+  Group #SizeRow {
+    LayoutMode: Left;
+    Anchor: (Height: 20, Top: 1);
+    Label #SizeLabel {
+      Anchor: (Width: 55);
+      Text: "Taille:";
+      Style: (FontSize: 10, TextColor: #808080, VerticalAlignment: Center);
+    }
+    Label #SizeValue {
+      FlexWeight: 1;
+      Text: "0x0x0";
+      Style: (FontSize: 11, TextColor: #b0b8c0, VerticalAlignment: Center);
+    }
+  }
+  Group #Sep2 {
+    Background: (Color: #2a3a5c);
+    Anchor: (Height: 1, Top: 3, Bottom: 3);
+  }
+  Group #RotationRow {
+    LayoutMode: Left;
+    Anchor: (Height: 20);
+    Label #RotLabel {
+      Anchor: (Width: 55);
+      Text: "Rotate:";
+      Style: (FontSize: 10, TextColor: #808080, VerticalAlignment: Center);
+    }
+    Label #RotValue {
+      FlexWeight: 1;
+      Text: "0";
+      Style: (FontSize: 11, TextColor: #ffab40, VerticalAlignment: Center);
+    }
+  }
+  Group #FlipRow {
+    LayoutMode: Left;
+    Anchor: (Height: 20, Top: 1);
+    Label #FlipLabel {
+      Anchor: (Width: 55);
+      Text: "Flip:";
+      Style: (FontSize: 10, TextColor: #808080, VerticalAlignment: Center);
+    }
+    Label #FlipValue {
+      FlexWeight: 1;
+      Text: "---";
+      Style: (FontSize: 11, TextColor: #ce93d8, VerticalAlignment: Center);
+    }
+  }
+  Group #Sep3 {
+    Background: (Color: #2a3a5c);
+    Anchor: (Height: 1, Top: 3, Bottom: 3);
+  }
+  Group #HintRow {
+    Anchor: (Height: 16);
+    Label #HintValue {
+      FlexWeight: 1;
+      Text: "/epaste | /estop";
+      Style: (FontSize: 9, TextColor: #505060, VerticalAlignment: Center, HorizontalAlignment: Center);
+    }
+  }
+}

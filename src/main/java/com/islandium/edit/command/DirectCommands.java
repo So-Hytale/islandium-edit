@@ -7,9 +7,14 @@ import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredAr
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.islandium.core.api.util.ColorUtil;
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
+import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.islandium.edit.operation.ClipboardData;
 import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.EditPlugin;
+import com.islandium.edit.math.BlockSizeHelper;
 import com.islandium.edit.math.RotationOverrides;
 import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.shape.*;
@@ -82,11 +87,16 @@ public class DirectCommands {
 
         // Preview
         registry.registerCommand(new PreviewCommand(plugin));
+        registry.registerCommand(new PreviewStopCommand(plugin));
         registry.registerCommand(new PreviewInfoCommand(plugin));
+
+        // Reset
+        registry.registerCommand(new NoneCommand(plugin));
 
         // Admin
         registry.registerCommand(new ReloadCommand(plugin));
         registry.registerCommand(new DebugFilterCommand());
+        registry.registerCommand(new BlockInfoCommand(plugin));
     }
 
     // === Helper ===
@@ -466,8 +476,22 @@ public class DirectCommands {
 
             ctx.sendMessage(ColorUtil.parse("&7Copie..."));
             return plugin.getClipboardOperations().copy(player)
-                    .thenAccept(result -> sendResult(ctx, result))
-                    .thenApply(v -> null);
+                    .thenCompose(result -> {
+                        sendResult(ctx, result);
+                        if (result.success()) {
+                            // Afficher le HUD Edit
+                            plugin.getEditHudManager().showHud(player);
+                            // Lancer la preview persistante automatiquement apres copie
+                            return plugin.getPreviewManager().startPersistentPreview(player)
+                                    .thenAccept(previewResult -> {
+                                        if (previewResult.success()) {
+                                            ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /estop pour annuler"));
+                                        }
+                                    })
+                                    .thenApply(v -> null);
+                        }
+                        return CompletableFuture.completedFuture(null);
+                    });
         }
     }
 
@@ -498,14 +522,24 @@ public class DirectCommands {
                         }
                         int copied = copyResult.blocksAffected();
                         return plugin.getBlockOperations().fill(player, "air")
-                                .thenAccept(clearResult -> {
+                                .thenCompose(clearResult -> {
                                     if (clearResult.success()) {
                                         ctx.sendMessage(ColorUtil.parse("&aCoupe: " + copied + " blocs"));
+                                        // Afficher le HUD Edit
+                                        plugin.getEditHudManager().showHud(player);
+                                        // Lancer la preview persistante automatiquement apres coupe
+                                        return plugin.getPreviewManager().startPersistentPreview(player)
+                                                .thenAccept(previewResult -> {
+                                                    if (previewResult.success()) {
+                                                        ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /estop pour annuler"));
+                                                    }
+                                                })
+                                                .thenApply(v -> null);
                                     } else {
                                         sendResult(ctx, clearResult);
+                                        return CompletableFuture.completedFuture((Void) null);
                                     }
-                                })
-                                .thenApply(v -> null);
+                                });
                     });
         }
     }
@@ -530,10 +564,11 @@ public class DirectCommands {
                 return CompletableFuture.completedFuture(null);
             }
 
-            // Arreter la preview si active
+            // Arreter la preview et masquer le HUD
             if (plugin.getPreviewManager().hasActivePreview(player)) {
                 plugin.getPreviewManager().stopPreview(player);
             }
+            plugin.getEditHudManager().hideHud(player);
 
             // /epaste --a true  -> skip air
             boolean skipAir = Boolean.TRUE.equals(ctx.get(skipAirArg));
@@ -561,6 +596,18 @@ public class DirectCommands {
 
             var result = plugin.getClipboardOperations().rotate(player, ctx.get(degreesArg));
             sendResult(ctx, result);
+
+            // Lancer la preview persistante automatiquement apres rotation
+            if (result.success()) {
+                return plugin.getPreviewManager().startPersistentPreview(player)
+                        .thenAccept(previewResult -> {
+                            if (previewResult.success()) {
+                                ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /epreview stop pour annuler"));
+                            }
+                        })
+                        .thenApply(v -> null);
+            }
+
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1050,6 +1097,31 @@ public class DirectCommands {
         }
     }
 
+    public static class PreviewStopCommand extends AbstractCommand {
+        private final EditPlugin plugin;
+
+        public PreviewStopCommand(EditPlugin plugin) {
+            super("epreviewstop", "Arreter la preview du clipboard");
+            addAliases("estop");
+            this.plugin = plugin;
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+            Player player = ctx.senderAs(Player.class);
+
+            if (plugin.getPreviewManager().hasActivePreview(player)) {
+                plugin.getPreviewManager().stopPreview(player);
+                plugin.getEditHudManager().hideHud(player);
+                ctx.sendMessage(ColorUtil.parse("&aPreview arretee"));
+            } else {
+                ctx.sendMessage(ColorUtil.parse("&cAucune preview active"));
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
     public static class PreviewInfoCommand extends AbstractCommand {
         private final EditPlugin plugin;
 
@@ -1339,6 +1411,38 @@ public class DirectCommands {
         }
     }
 
+    // === Reset ===
+
+    public static class NoneCommand extends AbstractCommand {
+        private final EditPlugin plugin;
+
+        public NoneCommand(EditPlugin plugin) {
+            super("enone", "Annuler tout (clipboard, preview, rotation, flip)");
+            addAliases("eclear-clipboard");
+            this.plugin = plugin;
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+            Player player = ctx.senderAs(Player.class);
+
+            // Arreter la preview
+            if (plugin.getPreviewManager().hasActivePreview(player)) {
+                plugin.getPreviewManager().stopPreview(player);
+            }
+
+            // Masquer le HUD
+            plugin.getEditHudManager().hideHud(player);
+
+            // Effacer le clipboard
+            plugin.getClipboardOperations().clearClipboard(player);
+
+            ctx.sendMessage(ColorUtil.parse("&aClipboard efface, preview arretee. Remis a zero."));
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
     // === Admin ===
 
     public static class ReloadCommand extends AbstractCommand {
@@ -1358,6 +1462,8 @@ public class DirectCommands {
                 if (overrides != null) {
                     overrides.reload(java.nio.file.Path.of("mods"));
                     ctx.sendMessage(ColorUtil.parse("&aRotation overrides recharges!"));
+                    ctx.sendMessage(ColorUtil.parse("&7Native flip (API Hytale): "
+                            + (overrides.isUseNativeFlip() ? "&aACTIF" : "&cDESACTIVE (overrides manuels)")));
                 } else {
                     RotationOverrides.init(java.nio.file.Path.of("mods"));
                     ctx.sendMessage(ColorUtil.parse("&aRotation overrides initialises!"));
@@ -1419,6 +1525,123 @@ public class DirectCommands {
             }
 
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    // === Block Info ===
+
+    /**
+     * /eblockinfo [blockId] - Inspecter les proprietes d'un bloc.
+     * Sans argument: inspecte le bloc vise par le joueur.
+     * Avec argument: inspecte le bloc par son ID.
+     */
+    public static class BlockInfoCommand extends AbstractCommand {
+        private final EditPlugin plugin;
+        private final OptionalArg<String> blockIdArg;
+
+        public BlockInfoCommand(EditPlugin plugin) {
+            super("eblockinfo", "Inspecter les proprietes d'un bloc (taille, flip, hitbox)");
+            this.plugin = plugin;
+            blockIdArg = withOptionalArg("block", "ID du bloc (ou vide = bloc vise)", ArgTypes.STRING);
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
+            Player player = ctx.senderAs(Player.class);
+
+            String blockId = ctx.get(blockIdArg);
+
+            if (blockId != null && !blockId.isEmpty()) {
+                // Inspecter par ID
+                showBlockInfo(ctx, blockId, -1);
+            } else {
+                // Inspecter le bloc vise via la selection pos1
+                int[] bounds = plugin.getSelectionManager().getSelectionBounds(player);
+                if (bounds == null) {
+                    ctx.sendMessage(ColorUtil.parse("&cAucune selection. Utilisez /pos1 sur un bloc ou /eblockinfo --block <id>"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                // Utiliser pos1 (premier coin de la selection)
+                int bx = bounds[0];
+                int by = bounds[1];
+                int bz = bounds[2];
+
+                World world;
+                try {
+                    world = player.getWorld();
+                } catch (Exception e) {
+                    ctx.sendMessage(ColorUtil.parse("&cMonde introuvable"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                if (world == null) {
+                    ctx.sendMessage(ColorUtil.parse("&cMonde introuvable"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                BlockType bt = world.getBlockType(bx, by, bz);
+                if (bt == null || bt == BlockType.EMPTY) {
+                    ctx.sendMessage(ColorUtil.parse("&cAucun bloc a la position (" + bx + ", " + by + ", " + bz + ")"));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                // Recuperer la rotation
+                int rotation = 0;
+                try {
+                    long chunkIndex = ChunkUtil.indexChunkFromBlock(bx, bz);
+                    WorldChunk chunk = world.getChunkIfLoaded(chunkIndex);
+                    if (chunk != null) {
+                        rotation = chunk.getRotationIndex(bx, by, bz);
+                    }
+                } catch (Exception e) {
+                    // Ignorer
+                }
+
+                ctx.sendMessage(ColorUtil.parse("&7Bloc a la position &f(" + bx + ", " + by + ", " + bz + ")&7:"));
+                showBlockInfo(ctx, bt.getId(), rotation);
+            }
+
+            return CompletableFuture.completedFuture(null);
+        }
+
+        private void showBlockInfo(CommandContext ctx, String blockId, int rotationIndex) {
+            if (rotationIndex < 0) rotationIndex = 0;
+
+            BlockSizeHelper.BlockSizeInfo info = BlockSizeHelper.getBlockSize(blockId, rotationIndex);
+            if (info == null) {
+                ctx.sendMessage(ColorUtil.parse("&cBloc introuvable: " + blockId));
+                return;
+            }
+
+            ctx.sendMessage(ColorUtil.parse("&6--- Block Info: &e" + blockId + " &6---"));
+            ctx.sendMessage(ColorUtil.parse("&7Taille hitbox: &f"
+                    + String.format("%.2f", info.width()) + " x "
+                    + String.format("%.2f", info.height()) + " x "
+                    + String.format("%.2f", info.depth())));
+            ctx.sendMessage(ColorUtil.parse("&7Grille (positions): &f"
+                    + info.gridWidth() + " x " + info.gridHeight() + " x " + info.gridDepth()
+                    + " &7(" + info.totalGridPositions() + " positions)"));
+            ctx.sendMessage(ColorUtil.parse("&7Depasse 1x1x1: " + (info.protrudesUnitBox() ? "&aOUI" : "&7Non")));
+            ctx.sendMessage(ColorUtil.parse("&7Multi-part: " + (info.isMultiPart() ? "&aOUI" : "&7Non")));
+            ctx.sendMessage(ColorUtil.parse("&7Flip type: &f" + (info.flipType() != null ? info.flipType().name() : "null")));
+            ctx.sendMessage(ColorUtil.parse("&7State (multi-bloc): " + (info.isState() ? "&aOUI" : "&7Non")));
+
+            if (rotationIndex > 0) {
+                int yaw = rotationIndex % 4;
+                int pitch = (rotationIndex / 4) % 4;
+                int roll = (rotationIndex / 16) % 4;
+                ctx.sendMessage(ColorUtil.parse("&7Rotation: &f" + rotationIndex
+                        + " &7(yaw=" + yaw + " pitch=" + pitch + " roll=" + roll + ")"));
+            }
+
+            // Log dans le fichier debug aussi
+            DebugLogger dbg = DebugLogger.get();
+            if (dbg != null) {
+                dbg.logSection("BLOCK INFO - " + blockId);
+                dbg.log("BLOCKINFO", info.toString());
+            }
         }
     }
 

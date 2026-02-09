@@ -31,6 +31,7 @@ public class RotationOverrides {
     private static volatile RotationOverrides instance;
 
     private final List<OverrideRule> rules = new ArrayList<>();
+    private boolean useNativeFlip = true; // Utiliser BlockFlipType API au lieu des overrides manuels
 
     /**
      * Une regle d'override de rotation.
@@ -102,6 +103,12 @@ public class RotationOverrides {
         rules.clear();
         String content = Files.readString(configFile, StandardCharsets.UTF_8);
         JsonObject root = GSON.fromJson(content, JsonObject.class);
+
+        // Lire le toggle use_native_flip (true par defaut)
+        if (root.has("use_native_flip")) {
+            useNativeFlip = root.get("use_native_flip").getAsBoolean();
+        }
+        LOGGER.info("[RotationOverrides] use_native_flip = " + useNativeFlip);
 
         JsonArray overrides = root.getAsJsonArray("overrides");
         if (overrides == null) return;
@@ -233,5 +240,21 @@ public class RotationOverrides {
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "[RotationOverrides] Error reloading: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * @return true si on utilise l'API native BlockFlipType.flipYaw() pour les flips.
+     * Quand actif, les overrides manuels sont ignores sauf si l'API ne fournit pas de resultat.
+     */
+    public boolean isUseNativeFlip() {
+        return useNativeFlip;
+    }
+
+    /**
+     * Active/desactive l'utilisation de l'API native pour les flips.
+     */
+    public void setUseNativeFlip(boolean useNativeFlip) {
+        this.useNativeFlip = useNativeFlip;
+        LOGGER.info("[RotationOverrides] use_native_flip = " + useNativeFlip);
     }
 }

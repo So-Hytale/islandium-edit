@@ -7,6 +7,12 @@
     "Par defaut: flipZ echange Nord<->Sud (yaw 0<->2), flipX echange Est<->Ouest (yaw 1<->3).",
     "Mais certains blocs asymetriques (coins, pentes) ont besoin de regles differentes.",
     "",
+    "=== USE_NATIVE_FLIP ===",
+    "  true  = Utilise l'API Hytale (BlockFlipType.flipYaw) pour calculer les flips automatiquement.",
+    "          Les overrides manuels ci-dessous sont IGNORES (sauf si l'API echoue).",
+    "  false = Utilise les overrides manuels definis ci-dessous.",
+    "  Conseil: tester en true d'abord, passer en false si des blocs specifiques ne sont pas corrects.",
+    "",
     "=== VALEURS DE YAW (orientation horizontale) ===",
     "  0 = Nord",
     "  1 = Est",
@@ -20,6 +26,7 @@
     "  flipX_swap_yaw:   paires a echanger lors d'un miroir Est/Ouest - ex: [[0, 2]] echange Nord<->Sud",
     ""
   ],
+  "use_native_flip": true,
   "overrides": [
     {
       "pattern": "Roof_Flat",

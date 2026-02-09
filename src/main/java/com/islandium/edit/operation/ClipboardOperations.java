@@ -12,6 +12,7 @@ import com.islandium.edit.EditPlugin;
 import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.history.EditAction;
 import com.islandium.edit.math.AffineTransform;
+import com.islandium.edit.math.BlockSizeHelper;
 import com.islandium.edit.math.BlockTransform;
 import com.islandium.edit.math.RotationOverrides;
 import org.jetbrains.annotations.NotNull;
@@ -96,6 +97,7 @@ public class ClipboardOperations {
             world.execute(() -> {
                 ClipboardData clipboard = new ClipboardData(width, height, depth, offsetX, offsetY, offsetZ);
                 int count = 0;
+                int skippedFillers = 0;
                 Map<String, Integer> blockCounts = new java.util.TreeMap<>();
 
                 for (int x = 0; x < width; x++) {
@@ -109,20 +111,31 @@ public class ClipboardOperations {
                             if (bt == null || bt == BlockType.EMPTY || "air".equalsIgnoreCase(bt.getId())) {
                                 // Ne pas stocker l'air dans le clipboard (absence = air)
                             } else {
-                                // Récupérer la rotation du bloc via le chunk
+                                // Récupérer la rotation et le filler via le chunk
                                 int rotation = 0;
+                                boolean isFiller = false;
                                 try {
                                     long chunkIndex = ChunkUtil.indexChunkFromBlock(worldX, worldZ);
                                     WorldChunk chunk = world.getChunkIfLoaded(chunkIndex);
                                     if (chunk != null) {
                                         rotation = chunk.getRotationIndex(worldX, worldY, worldZ);
+                                        // Vérifier si c'est un filler (position secondaire d'un bloc multi-part)
+                                        int fillerValue = chunk.getFiller(worldX, worldY, worldZ);
+                                        isFiller = BlockSizeHelper.isFiller(fillerValue);
                                     }
                                 } catch (Exception e) {
-                                    // Ignorer les erreurs de rotation
+                                    // Ignorer les erreurs
                                 }
-                                clipboard.setBlock(x, y, z, bt.getId(), rotation);
-                                blockCounts.merge(bt.getId(), 1, Integer::sum);
-                                count++;
+
+                                if (isFiller) {
+                                    // Skipper les fillers : ils seront recréés automatiquement
+                                    // lors du paste quand on place le bloc origine
+                                    skippedFillers++;
+                                } else {
+                                    clipboard.setBlock(x, y, z, bt.getId(), rotation);
+                                    blockCounts.merge(bt.getId(), 1, Integer::sum);
+                                    count++;
+                                }
                             }
                         }
                     }
@@ -136,10 +149,25 @@ public class ClipboardOperations {
                 if (dbg != null) {
                     dbg.logCopy(player.getDisplayName(), playerX, playerY, playerZ,
                             bounds, width, height, depth, offsetX, offsetY, offsetZ, count);
-                    // Log liste de tous les types de blocs copiés avec quantité
+                    if (skippedFillers > 0) {
+                        dbg.log("COPY", "Fillers skipped: " + skippedFillers + " (positions secondaires multi-part)");
+                    }
+                    // Log liste de tous les types de blocs copiés avec quantité + info multi-part
                     dbg.log("COPY", "Block types (" + blockCounts.size() + " types):");
                     for (Map.Entry<String, Integer> bc : blockCounts.entrySet()) {
-                        dbg.log("COPY", "  " + bc.getValue() + "x " + bc.getKey());
+                        String blockId = bc.getKey();
+                        int qty = bc.getValue();
+                        BlockSizeHelper.BlockSizeInfo sizeInfo = BlockSizeHelper.getBlockSize(blockId, 0);
+                        if (sizeInfo != null && sizeInfo.isMultiPart()) {
+                            int gridPositions = sizeInfo.totalGridPositions();
+                            int realCount = gridPositions > 0 ? qty / gridPositions : qty;
+                            dbg.log("COPY", "  " + qty + "x " + blockId
+                                    + " [MULTI-PART " + sizeInfo.gridWidth() + "x" + sizeInfo.gridHeight() + "x" + sizeInfo.gridDepth()
+                                    + " -> ~" + realCount + " objets reels]"
+                                    + " flip=" + sizeInfo.flipType());
+                        } else {
+                            dbg.log("COPY", "  " + qty + "x " + blockId);
+                        }
                     }
                     // Log résumé des blocs avec rotation
                     dbg.log("COPY", "Blocks with rotation: " + clipboard.getRotations().size());
@@ -628,36 +656,60 @@ public class ClipboardOperations {
 
         // Appliquer les flips
         RotationOverrides overrides = RotationOverrides.get();
+        boolean useNativeFlip = overrides != null && overrides.isUseNativeFlip();
 
-        // FlipX (miroir est/ouest) : inverse les directions est(1) et ouest(3)
+        // FlipX (miroir est/ouest)
         if (flipX) {
-            boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipX(blockType);
-            if (!skipStandard) {
-                // Swap standard : 1(Est) <-> 3(Ouest)
-                if (yaw == 1) yaw = 3;
-                else if (yaw == 3) yaw = 1;
-            }
-            // Appliquer les overrides (remplace OU ajoute selon replace_standard)
-            if (overrides != null) {
-                yaw = overrides.applyFlipXYaw(yaw, blockType);
+            if (useNativeFlip) {
+                // Essayer l'API native BlockFlipType.flipYaw()
+                int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
+                if (nativeYaw >= 0) {
+                    yaw = nativeYaw;
+                } else {
+                    // Fallback: swap standard 1(Est) <-> 3(Ouest)
+                    if (yaw == 1) yaw = 3;
+                    else if (yaw == 3) yaw = 1;
+                }
+            } else {
+                // Mode overrides manuels
+                boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipX(blockType);
+                if (!skipStandard) {
+                    if (yaw == 1) yaw = 3;
+                    else if (yaw == 3) yaw = 1;
+                }
+                if (overrides != null) {
+                    yaw = overrides.applyFlipXYaw(yaw, blockType);
+                }
             }
         }
 
-        // FlipZ (miroir nord/sud) : inverse les directions nord(0) et sud(2)
+        // FlipZ (miroir nord/sud)
         if (flipZ) {
-            boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipZ(blockType);
-            if (!skipStandard) {
-                // Swap standard : 0(Nord) <-> 2(Sud)
-                if (yaw == 0) yaw = 2;
-                else if (yaw == 2) yaw = 0;
-            }
-            // Appliquer les overrides (remplace OU ajoute selon replace_standard)
-            if (overrides != null) {
-                yaw = overrides.applyFlipZYaw(yaw, blockType);
+            if (useNativeFlip) {
+                // Essayer l'API native BlockFlipType.flipYaw()
+                int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
+                if (nativeYaw >= 0) {
+                    yaw = nativeYaw;
+                } else {
+                    // Fallback: swap standard 0(Nord) <-> 2(Sud)
+                    if (yaw == 0) yaw = 2;
+                    else if (yaw == 2) yaw = 0;
+                }
+            } else {
+                // Mode overrides manuels
+                boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipZ(blockType);
+                if (!skipStandard) {
+                    if (yaw == 0) yaw = 2;
+                    else if (yaw == 2) yaw = 0;
+                }
+                if (overrides != null) {
+                    yaw = overrides.applyFlipZYaw(yaw, blockType);
+                }
             }
         }
 
         if (vFlip) {
+            // Pas d'API native pour le flip vertical, toujours overrides manuels
             boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipY(blockType);
             if (!skipStandard) {
                 // Flip Y standard : inverse le pitch

@@ -16,6 +16,7 @@ import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.operation.ClipboardOperations;
 import com.islandium.edit.preview.PreviewManager;
 import com.islandium.edit.selection.SelectionManager;
+import com.islandium.edit.ui.EditHudManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
@@ -55,6 +56,7 @@ public class EditPlugin extends JavaPlugin {
     private ClipboardOperations clipboardOperations;
     private EditHistory editHistory;
     private PreviewManager previewManager;
+    private EditHudManager editHudManager;
 
     public EditPlugin(JavaPluginInit init) {
         super(init);
@@ -85,6 +87,7 @@ public class EditPlugin extends JavaPlugin {
             this.blockOperations = new BlockOperations(this);
             this.clipboardOperations = new ClipboardOperations(this);
             this.previewManager = new PreviewManager(this);
+            this.editHudManager = new EditHudManager(this);
 
             // 3. Enregistrer les commandes
             log(Level.INFO, "Registering commands...");
@@ -128,6 +131,10 @@ public class EditPlugin extends JavaPlugin {
 
             if (blockOperations != null) {
                 blockOperations.shutdown();
+            }
+
+            if (editHudManager != null) {
+                editHudManager.shutdown();
             }
 
             if (previewManager != null) {
@@ -191,6 +198,11 @@ public class EditPlugin extends JavaPlugin {
     @NotNull
     public PreviewManager getPreviewManager() {
         return previewManager;
+    }
+
+    @NotNull
+    public EditHudManager getEditHudManager() {
+        return editHudManager;
     }
 
     // === Logging ===

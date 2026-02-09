@@ -9,5 +9,5 @@
   "Dependencies": {
     "islandium:core": "*"
   },
-  "IncludesAssetPack": false
+  "IncludesAssetPack": true
 }
