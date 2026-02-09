@@ -567,13 +567,8 @@ public class DirectCommands {
                 return CompletableFuture.completedFuture(null);
             }
 
-            // Recuperer la position figee avant de defiger
-            int[] frozenPos = plugin.getFreezeManager().getFrozenPosition(player);
-
-            // Defiger les vrais blocs si actif (restaurer les originaux)
-            if (plugin.getFreezeManager().isFrozen(player)) {
-                plugin.getFreezeManager().unfreeze(player);
-            }
+            // Recuperer la position figee avant de stopper la preview
+            int[] frozenPos = plugin.getPreviewManager().getFrozenPosition(player);
 
             // Arreter la preview et masquer le HUD
             if (plugin.getPreviewManager().hasActivePreview(player)) {
@@ -1430,7 +1425,7 @@ public class DirectCommands {
         private final EditPlugin plugin;
 
         public FreezeCommand(EditPlugin plugin) {
-            super("efig", "Figer/defiger la preview (place les vrais blocs)");
+            super("efig", "Figer/defiger la position de la preview");
             this.plugin = plugin;
         }
 
@@ -1440,32 +1435,26 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             // Toggle: si deja fige -> defiger
-            if (plugin.getFreezeManager().isFrozen(player)) {
-                int restored = plugin.getFreezeManager().unfreeze(player);
-                if (restored >= 0) {
-                    ctx.sendMessage(ColorUtil.parse("&aDefige! &7(" + restored + " blocs restaures)"));
-                } else {
-                    ctx.sendMessage(ColorUtil.parse("&cErreur lors du defigeage"));
-                }
+            if (plugin.getPreviewManager().isFrozen(player)) {
+                plugin.getPreviewManager().unfreeze(player);
+                ctx.sendMessage(ColorUtil.parse("&aPreview defigee! &7(suit votre position)"));
                 return CompletableFuture.completedFuture(null);
             }
 
-            // Sinon -> figer
+            // Sinon -> figer a la position actuelle
             if (!plugin.getClipboardOperations().hasClipboard(player)) {
                 ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Figeage en cours..."));
-            int placed = plugin.getFreezeManager().freeze(player);
-            if (placed >= 0) {
-                // Figer aussi la position de la preview debug
-                plugin.getPreviewManager().freezeAt(player);
-                ctx.sendMessage(ColorUtil.parse("&aFige! &7(" + placed + " blocs places)"));
-                ctx.sendMessage(ColorUtil.parse("&7Deplacez-vous pour inspecter. /efig pour defiger, /epaste pour confirmer."));
-            } else {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: clipboard vide ou monde introuvable"));
+            // Lancer la preview persistante si pas active
+            if (!plugin.getPreviewManager().hasActivePreview(player)) {
+                plugin.getPreviewManager().startPersistentPreview(player);
             }
+
+            plugin.getPreviewManager().freezeAt(player);
+            ctx.sendMessage(ColorUtil.parse("&aPreview figee! &7(cubes verts = position fixe)"));
+            ctx.sendMessage(ColorUtil.parse("&7/efig pour defiger, /epaste pour coller ici."));
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1486,12 +1475,7 @@ public class DirectCommands {
             if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
             Player player = ctx.senderAs(Player.class);
 
-            // Defiger les vrais blocs si actif
-            if (plugin.getFreezeManager().isFrozen(player)) {
-                plugin.getFreezeManager().unfreeze(player);
-            }
-
-            // Arreter la preview
+            // Arreter la preview (defige automatiquement)
             if (plugin.getPreviewManager().hasActivePreview(player)) {
                 plugin.getPreviewManager().stopPreview(player);
             }

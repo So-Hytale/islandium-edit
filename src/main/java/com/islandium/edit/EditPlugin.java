@@ -14,7 +14,6 @@ import com.islandium.edit.interaction.WandInteraction;
 import com.islandium.edit.math.RotationOverrides;
 import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.operation.ClipboardOperations;
-import com.islandium.edit.preview.FreezeManager;
 import com.islandium.edit.preview.PreviewManager;
 import com.islandium.edit.selection.SelectionManager;
 import com.islandium.edit.ui.EditHudManager;
@@ -57,7 +56,6 @@ public class EditPlugin extends JavaPlugin {
     private ClipboardOperations clipboardOperations;
     private EditHistory editHistory;
     private PreviewManager previewManager;
-    private FreezeManager freezeManager;
     private EditHudManager editHudManager;
 
     public EditPlugin(JavaPluginInit init) {
@@ -89,7 +87,6 @@ public class EditPlugin extends JavaPlugin {
             this.blockOperations = new BlockOperations(this);
             this.clipboardOperations = new ClipboardOperations(this);
             this.previewManager = new PreviewManager(this);
-            this.freezeManager = new FreezeManager(this);
             this.editHudManager = new EditHudManager(this);
 
             // 3. Enregistrer les commandes
@@ -138,10 +135,6 @@ public class EditPlugin extends JavaPlugin {
 
             if (editHudManager != null) {
                 editHudManager.shutdown();
-            }
-
-            if (freezeManager != null) {
-                freezeManager.shutdown();
             }
 
             if (previewManager != null) {
@@ -205,11 +198,6 @@ public class EditPlugin extends JavaPlugin {
     @NotNull
     public PreviewManager getPreviewManager() {
         return previewManager;
-    }
-
-    @NotNull
-    public FreezeManager getFreezeManager() {
-        return freezeManager;
     }
 
     @NotNull

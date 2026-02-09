@@ -306,7 +306,8 @@ public class PreviewManager {
         }
         session.setHolder(newHolder);
 
-        // Rafraichir la preview
+        // Rafraichir les cubes debug (figes ou mobiles)
+        // sendPreviewShapes utilise la position figee si disponible
         sendPreviewShapes(session, null);
     }
 
@@ -324,8 +325,7 @@ public class PreviewManager {
     @SuppressWarnings("deprecation")
     public void stopPreview(UUID playerId) {
         PreviewSession session = activePreviews.remove(playerId);
-        // Defiger aussi
-        frozenPositions.remove(playerId);
+        boolean wasFrozen = frozenPositions.remove(playerId) != null;
 
         if (session == null) {
             return;
@@ -357,7 +357,7 @@ public class PreviewManager {
 
     /**
      * Fige la preview a la position actuelle du joueur.
-     * La preview continuera de s'afficher mais a cette position fixe.
+     * Les cubes debug restent affiches en vert a la position figee.
      */
     @SuppressWarnings("deprecation")
     public void freezeAt(@NotNull Player player) {
@@ -369,15 +369,29 @@ public class PreviewManager {
         int y = (int) Math.floor(pos.getY());
         int z = (int) Math.floor(pos.getZ());
 
-        frozenPositions.put(player.getUuid(), new int[]{x, y, z});
+        UUID playerId = player.getUuid();
+        frozenPositions.put(playerId, new int[]{x, y, z});
+
+        // Re-envoyer les cubes debug immediatement a la position figee (vert)
+        PreviewSession session = activePreviews.get(playerId);
+        if (session != null) {
+            sendPreviewShapes(session, null);
+        }
     }
 
     /**
-     * Defige la preview (reprend le suivi du joueur).
+     * Defige la preview (reprend le suivi du joueur avec cubes debug).
      */
     @SuppressWarnings("deprecation")
     public void unfreeze(@NotNull Player player) {
-        frozenPositions.remove(player.getUuid());
+        UUID playerId = player.getUuid();
+        frozenPositions.remove(playerId);
+
+        // Re-envoyer immediatement les cubes debug a la position du joueur (bleu)
+        PreviewSession session = activePreviews.get(playerId);
+        if (session != null) {
+            sendPreviewShapes(session, null);
+        }
     }
 
     /**
