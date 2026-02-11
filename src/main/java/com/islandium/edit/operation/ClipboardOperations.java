@@ -18,10 +18,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -279,123 +277,63 @@ public class ClipboardOperations {
         int clipHeight = clipboard.getHeight();
         int clipDepth = clipboard.getDepth();
 
-        // === Phase 1: Collecter les positions filler des blocs multi-part ===
-        // Pour éviter que le paste ne détruise les fillers auto-créés par Hytale
-        // en plaçant de l'air à leurs positions.
-        Set<Long> protectedFillerPositions = new HashSet<>();
-        if (!skipAir) {
-            for (int cx = 0; cx < clipWidth; cx++) {
-                for (int cy = 0; cy < clipHeight; cy++) {
-                    for (int cz = 0; cz < clipDepth; cz++) {
-                        String bt = clipboard.getBlock(cx, cy, cz);
-                        if (bt == null || "air".equalsIgnoreCase(bt)) continue;
+        // === Construire les listes de blocs en 2 passes : AIR d'abord, SOLIDES ensuite ===
+        // L'air est placé en premier pour nettoyer la zone, puis les blocs solides sont placés.
+        // Cela évite que l'air du clipboard écrase les fillers auto-créés par Hytale
+        // lorsque des blocs multi-part (lanternes, bancs...) sont placés.
+        // Pas besoin de prédire les positions filler : elles n'existent pas encore quand l'air est posé.
 
-                        int rot = clipboard.getRotation(cx, cy, cz);
-                        int transformedRot = transformRotation(rot, transform, bt);
-                        BlockSizeHelper.BlockSizeInfo sizeInfo = BlockSizeHelper.getBlockSize(bt, transformedRot);
-                        if (sizeInfo == null || !sizeInfo.isMultiPart()) continue;
-
-                        // Calculer la position monde transformée de ce bloc
-                        double relX = offsetX + cx;
-                        double relY = offsetY + cy;
-                        double relZ = offsetZ + cz;
-                        double[] tf = transform.apply(relX, relY, relZ);
-                        for (int i = 0; i < 3; i++) {
-                            double rounded = Math.round(tf[i]);
-                            if (Math.abs(tf[i] - rounded) < 1e-8) tf[i] = rounded;
-                        }
-                        int baseWX = playerX + (int) Math.floor(tf[0]);
-                        int baseWY = playerY + (int) Math.floor(tf[1]);
-                        int baseWZ = playerZ + (int) Math.floor(tf[2]);
-
-                        // Marquer toutes les positions filler (hors base) comme protégées
-                        // Les offsets filler doivent être pivotés selon le yaw du bloc transformé
-                        int gw = sizeInfo.gridWidth();
-                        int gh = sizeInfo.gridHeight();
-                        int gd = sizeInfo.gridDepth();
-                        int yaw = transformedRot % 4; // 0=Nord, 1=Est, 2=Sud, 3=Ouest
-                        for (int fx = 0; fx < gw; fx++) {
-                            for (int fy = 0; fy < gh; fy++) {
-                                for (int fz = 0; fz < gd; fz++) {
-                                    if (fx == 0 && fy == 0 && fz == 0) continue; // Skip base
-                                    // Pivoter l'offset (fx, fz) selon le yaw du bloc
-                                    int rotFx, rotFz;
-                                    switch (yaw) {
-                                        case 0: // Nord: pas de rotation
-                                            rotFx = fx; rotFz = fz; break;
-                                        case 1: // Est: 90° CW -> (fx,fz) -> (fz, -fx)
-                                            rotFx = fz; rotFz = -fx; break;
-                                        case 2: // Sud: 180° -> (fx,fz) -> (-fx, -fz)
-                                            rotFx = -fx; rotFz = -fz; break;
-                                        case 3: // Ouest: 270° CW -> (fx,fz) -> (-fz, fx)
-                                            rotFx = -fz; rotFz = fx; break;
-                                        default:
-                                            rotFx = fx; rotFz = fz; break;
-                                    }
-                                    long key = packPosition(baseWX + rotFx, baseWY + fy, baseWZ + rotFz);
-                                    protectedFillerPositions.add(key);
-                                    if (dbg != null) {
-                                        dbg.log("PASTE", "  Protecting filler at (" + (baseWX + rotFx) + "," + (baseWY + fy) + "," + (baseWZ + rotFz) + ") for " + bt + " yaw=" + yaw + " offset=(" + fx + "," + fy + "," + fz + ")->(" + rotFx + "," + fy + "," + rotFz + ")");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (dbg != null && !protectedFillerPositions.isEmpty()) {
-                dbg.log("PASTE", "Protected filler positions (multi-part): " + protectedFillerPositions.size());
-            }
-        }
-
-        // === Phase 2: Construire la liste des blocs à placer ===
+        // Première passe : collecter l'air
         for (int cx = 0; cx < clipWidth; cx++) {
             for (int cy = 0; cy < clipHeight; cy++) {
                 for (int cz = 0; cz < clipDepth; cz++) {
                     String blockType = clipboard.getBlock(cx, cy, cz);
                     boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
 
-                    // Si skipAir, ignorer les positions vides/air
-                    if (skipAir && isAir) {
-                        continue;
-                    }
+                    if (!isAir || skipAir) continue;
 
-                    // Si pas skipAir et air, on doit quand même le placer (pour vider l'espace)
-                    if (isAir) {
-                        blockType = "air";
-                    }
-
-                    // Position relative au joueur (offset + position dans le clipboard)
                     double relX = offsetX + cx;
                     double relY = offsetY + cy;
                     double relZ = offsetZ + cz;
-
-                    // Appliquer la transformation autour du joueur (origin = 0,0,0)
                     double[] transformed = transform.apply(relX, relY, relZ);
-
-                    // Corriger les erreurs de précision flottante
                     for (int i = 0; i < 3; i++) {
                         double rounded = Math.round(transformed[i]);
-                        if (Math.abs(transformed[i] - rounded) < 1e-8) {
-                            transformed[i] = rounded;
-                        }
+                        if (Math.abs(transformed[i] - rounded) < 1e-8) transformed[i] = rounded;
                     }
-
-                    // Ajouter la position du joueur
                     int worldX = playerX + (int) Math.floor(transformed[0]);
                     int worldY = playerY + (int) Math.floor(transformed[1]);
                     int worldZ = playerZ + (int) Math.floor(transformed[2]);
 
-                    // Ne pas placer d'air sur les positions filler protégées (blocs multi-part)
-                    if (isAir && !protectedFillerPositions.isEmpty()) {
-                        long posKey = packPosition(worldX, worldY, worldZ);
-                        if (protectedFillerPositions.contains(posKey)) {
-                            if (dbg != null) {
-                                dbg.log("PASTE", "Skipping air at protected filler position (" + worldX + "," + worldY + "," + worldZ + ")");
-                            }
-                            continue;
-                        }
+                    positions.add(new int[]{worldX, worldY, worldZ});
+                    blockTypes.add("air");
+                    blockRotations.add(0);
+                    debugBlockIndex++;
+                }
+            }
+        }
+
+        int airCount = positions.size();
+
+        // Deuxième passe : collecter les blocs solides
+        for (int cx = 0; cx < clipWidth; cx++) {
+            for (int cy = 0; cy < clipHeight; cy++) {
+                for (int cz = 0; cz < clipDepth; cz++) {
+                    String blockType = clipboard.getBlock(cx, cy, cz);
+                    boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
+
+                    if (isAir) continue;
+
+                    double relX = offsetX + cx;
+                    double relY = offsetY + cy;
+                    double relZ = offsetZ + cz;
+                    double[] transformed = transform.apply(relX, relY, relZ);
+                    for (int i = 0; i < 3; i++) {
+                        double rounded = Math.round(transformed[i]);
+                        if (Math.abs(transformed[i] - rounded) < 1e-8) transformed[i] = rounded;
                     }
+                    int worldX = playerX + (int) Math.floor(transformed[0]);
+                    int worldY = playerY + (int) Math.floor(transformed[1]);
+                    int worldZ = playerZ + (int) Math.floor(transformed[2]);
 
                     positions.add(new int[]{worldX, worldY, worldZ});
 
@@ -411,8 +349,7 @@ public class ClipboardOperations {
                     blockRotations.add(transformedRotation);
 
                     // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
-                    if (dbg != null && !"air".equalsIgnoreCase(blockType) && originalRotation != 0
-                            && dbg.matchesBlockFilter(blockType)) {
+                    if (dbg != null && originalRotation != 0 && dbg.matchesBlockFilter(blockType)) {
                         dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
                                 relX, relY, relZ,
                                 transformed[0], transformed[1], transformed[2],
@@ -425,7 +362,7 @@ public class ClipboardOperations {
         }
 
         if (dbg != null) {
-            dbg.log("PASTE", "Total blocks to paste: " + positions.size());
+            dbg.log("PASTE", "Total blocks to paste: " + positions.size() + " (air first: " + airCount + ", solids: " + (positions.size() - airCount) + ")");
         }
 
         CompletableFuture<BlockOperations.OperationResult> future = new CompletableFuture<>();
@@ -973,13 +910,6 @@ public class ClipboardOperations {
                 }
             }
         });
-    }
-
-    /**
-     * Encode une position (x, y, z) en un long unique pour utilisation dans un HashSet.
-     */
-    private static long packPosition(int x, int y, int z) {
-        return ((long) x & 0x3FFFFFFL) | (((long) y & 0xFFFL) << 26) | (((long) z & 0x3FFFFFFL) << 38);
     }
 
     @Nullable
