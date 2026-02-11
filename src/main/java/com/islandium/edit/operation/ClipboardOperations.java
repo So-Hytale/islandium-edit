@@ -531,6 +531,55 @@ public class ClipboardOperations {
 
         int multiPartCount = positions.size() - airCount - nonMultiPartCount;
 
+        // === Trier les multiparts par X décroissant puis Z décroissant ===
+        // world.setBlock() crée toujours les fillers en yaw=0 (direction +X, +Z).
+        // En triant les multiparts du plus grand X/Z au plus petit, les fillers
+        // temporaires (+X, +Z) pointent vers des zones NON encore occupées par
+        // d'autres multiparts en attente de placement.
+        if (multiPartCount > 1) {
+            int mpStart = airCount + nonMultiPartCount;
+            int mpEnd = positions.size();
+            // Créer des indices pour trier
+            Integer[] mpIndices = new Integer[multiPartCount];
+            for (int mi = 0; mi < multiPartCount; mi++) {
+                mpIndices[mi] = mpStart + mi;
+            }
+            java.util.Arrays.sort(mpIndices, (a, b) -> {
+                int[] pa = positions.get(a);
+                int[] pb = positions.get(b);
+                // X décroissant d'abord
+                if (pa[0] != pb[0]) return Integer.compare(pb[0], pa[0]);
+                // Z décroissant ensuite
+                if (pa[2] != pb[2]) return Integer.compare(pb[2], pa[2]);
+                // Y décroissant pour départager
+                return Integer.compare(pb[1], pa[1]);
+            });
+            // Reconstruire les sous-listes triées
+            List<int[]> sortedPos = new ArrayList<>(multiPartCount);
+            List<String> sortedTypes = new ArrayList<>(multiPartCount);
+            List<Integer> sortedRots = new ArrayList<>(multiPartCount);
+            for (int mi = 0; mi < multiPartCount; mi++) {
+                int idx = mpIndices[mi];
+                sortedPos.add(positions.get(idx));
+                sortedTypes.add(blockTypes.get(idx));
+                sortedRots.add(blockRotations.get(idx));
+            }
+            // Remplacer dans les listes originales
+            for (int mi = 0; mi < multiPartCount; mi++) {
+                positions.set(mpStart + mi, sortedPos.get(mi));
+                blockTypes.set(mpStart + mi, sortedTypes.get(mi));
+                blockRotations.set(mpStart + mi, sortedRots.get(mi));
+            }
+            if (dbg != null) {
+                dbg.log("PASTE", "  [MULTIPART-SORT] Sorted " + multiPartCount + " multiparts by X desc, Z desc");
+                for (int mi = 0; mi < multiPartCount; mi++) {
+                    int[] p = positions.get(mpStart + mi);
+                    dbg.log("PASTE", "    #" + mi + " " + blockTypes.get(mpStart + mi)
+                            + " (" + p[0] + "," + p[1] + "," + p[2] + ") rot=" + blockRotations.get(mpStart + mi));
+                }
+            }
+        }
+
         if (dbg != null) {
             dbg.log("PASTE", "Total blocks to paste: " + positions.size()
                     + " (air: " + airCount
@@ -1053,44 +1102,51 @@ public class ClipboardOperations {
                                 }
                                 world.breakBlock(pos[0], pos[1], pos[2], 0);
                             } else if (isPlacingMultiPart && chunk != null) {
-                                // === Multipart: placement direct avec la bonne rotation ===
-                                // IMPORTANT: Pour les multipart, on ne peut PAS faire world.setBlock()
-                                // puis chunk.setBlock() car le premier crée des fillers à yaw=0
-                                // qui écrasent les blocs voisins (y compris d'autres multipart
-                                // déjà placés dans la même passe).
-                                //
-                                // Solution: utiliser chunk.setBlock() DIRECTEMENT avec la bonne
-                                // rotation. Le blockId est obtenu une seule fois par type via
-                                // un placement temporaire dans un espace vide.
+                                // === Multipart v15: world.setBlock + chunk.setBlock ===
+                                // world.setBlock() crée le bloc + fillers (en yaw=0).
+                                // chunk.setBlock() corrige ensuite la rotation.
+                                // Les multiparts sont triés dans le paste pour minimiser
+                                // les collisions de fillers temporaires (voir tri en amont).
 
                                 BlockType bt = BlockType.getAssetMap().getAsset(blockType);
                                 if (bt != null) {
-                                    // Obtenir le blockId : placer le bloc normalement pour l'obtenir
-                                    // puis immédiatement le casser et le re-placer avec la bonne rotation
+                                    // Étape 1: Placer via world.setBlock (crée les fillers)
                                     world.setBlock(pos[0], pos[1], pos[2], blockType);
                                     int blockId = chunk.getBlock(pos[0], pos[1], pos[2]);
 
-                                    if (blockId > 0) {
-                                        // Casser le bloc (y compris ses fillers temporaires en yaw=0)
-                                        world.breakBlock(pos[0], pos[1], pos[2], 0);
-
-                                        // Re-placer avec la bonne rotation directement
+                                    if (blockId > 0 && rotation != 0) {
+                                        // Étape 2: Corriger la rotation
                                         chunk.setBlock(pos[0], pos[1], pos[2], blockId, bt, rotation, 0, 0);
+                                    }
 
-                                        if (dbgPlace != null) {
-                                            int finalRot = chunk.getRotationIndex(pos[0], pos[1], pos[2]);
-                                            dbgPlace.log("PASTE", "  [MP-EXEC] DIRECT " + blockType
-                                                    + " pos=(" + pos[0] + "," + pos[1] + "," + pos[2] + ")"
-                                                    + " rot=" + rotation + " verified=" + finalRot
-                                                    + " blockId=" + blockId);
+                                    if (dbgPlace != null) {
+                                        int finalRot = chunk.getRotationIndex(pos[0], pos[1], pos[2]);
+                                        // Vérifier les fillers dans les 4 directions cardinales + haut
+                                        StringBuilder fillerCheck = new StringBuilder();
+                                        int[][] offsets = {{1,0,0},{-1,0,0},{0,0,1},{0,0,-1},{0,1,0},{0,-1,0},
+                                                          {2,0,0},{-2,0,0},{0,0,2},{0,0,-2}};
+                                        for (int[] off : offsets) {
+                                            int fx = pos[0]+off[0], fy = pos[1]+off[1], fz = pos[2]+off[2];
+                                            long fci = ChunkUtil.indexChunkFromBlock(fx, fz);
+                                            WorldChunk fc = world.getChunkIfLoaded(fci);
+                                            if (fc != null) {
+                                                int fv = fc.getFiller(fx, fy, fz);
+                                                if (BlockSizeHelper.isFiller(fv)) {
+                                                    int[] fo = BlockSizeHelper.getFillerOffset(fv);
+                                                    fillerCheck.append(" F(").append(off[0]).append(",")
+                                                               .append(off[1]).append(",").append(off[2])
+                                                               .append(")->origin(")
+                                                               .append(fx-fo[0]).append(",")
+                                                               .append(fy-fo[1]).append(",")
+                                                               .append(fz-fo[2]).append(")");
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        // Fallback
-                                        if (dbgPlace != null) {
-                                            dbgPlace.log("PASTE", "  [MP-EXEC] FALLBACK " + blockType
-                                                    + " pos=(" + pos[0] + "," + pos[1] + "," + pos[2] + ")"
-                                                    + " blockId=0, keeping world.setBlock result");
-                                        }
+                                        dbgPlace.log("PASTE", "  [MP-EXEC] v15 " + blockType
+                                                + " pos=(" + pos[0] + "," + pos[1] + "," + pos[2] + ")"
+                                                + " rot=" + rotation + " verified=" + finalRot
+                                                + " blockId=" + blockId
+                                                + " fillers:" + (fillerCheck.length() == 0 ? " NONE" : fillerCheck));
                                     }
                                 } else {
                                     world.setBlock(pos[0], pos[1], pos[2], blockType);
