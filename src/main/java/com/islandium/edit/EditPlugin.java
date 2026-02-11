@@ -42,10 +42,10 @@ public class EditPlugin extends JavaPlugin {
     public static final String WAND_ITEM_ID = "Edit_Wand";
 
     /** Blocs traités par batch */
-    public static final int BLOCKS_PER_BATCH = 5000;
+    public static final int BLOCKS_PER_BATCH = 2000;
 
     /** Délai entre les batches en ms */
-    public static final int BATCH_DELAY_MS = 50;
+    public static final int BATCH_DELAY_MS = 80;
 
     private static volatile EditPlugin instance;
     private static volatile boolean initialized = false;

@@ -904,6 +904,8 @@ public class BlockOperations {
         int totalBatches = batches.size();
         AtomicInteger completedBatches = new AtomicInteger(0);
 
+        System.out.println("[IslandiumEdit] Operation: " + total + " blocs en " + totalBatches + " batches");
+
         for (int i = 0; i < batches.size(); i++) {
             List<int[]> batch = batches.get(i);
             int delay = i * EditPlugin.BATCH_DELAY_MS;
@@ -932,13 +934,17 @@ public class BlockOperations {
                         }
                     }
 
-                    if (completedBatches.incrementAndGet() >= totalBatches) {
+                    int done = completedBatches.incrementAndGet();
+                    int currentProcessed = processed.get();
+                    System.out.println("[IslandiumEdit] Batch " + done + "/" + totalBatches + " - " + currentProcessed + "/" + total + " blocs (" + (currentProcessed * 100 / total) + "%)");
+
+                    if (done >= totalBatches) {
                         int failCount = failed.get();
                         if (failCount > 0) {
                             callback.accept(OperationResult.partial(
-                                    failCount + " blocs ont echoue", processed.get()));
+                                    failCount + " blocs ont echoue", currentProcessed));
                         } else {
-                            callback.accept(OperationResult.success("OK", processed.get()));
+                            callback.accept(OperationResult.success("OK", currentProcessed));
                         }
                     }
                 });
@@ -967,7 +973,8 @@ public class BlockOperations {
         List<List<BlockChange>> batches = partition(reversed, EditPlugin.BLOCKS_PER_BATCH);
         int totalBatches = batches.size();
 
-        System.out.println("[IslandiumEdit] Undo: " + changes.size() + " changes in " + totalBatches + " batches");
+        int totalChanges = changes.size();
+        System.out.println("[IslandiumEdit] Undo: " + totalChanges + " blocs en " + totalBatches + " batches");
 
         for (int i = 0; i < batches.size(); i++) {
             List<BlockChange> batch = batches.get(i);
@@ -1008,9 +1015,12 @@ public class BlockOperations {
                         }
                     }
 
-                    if (completedBatches.incrementAndGet() >= totalBatches) {
-                        System.out.println("[IslandiumEdit] Undo complete: " + count.get() + "/" + changes.size() + " blocks restored");
-                        future.complete(count.get());
+                    int done = completedBatches.incrementAndGet();
+                    int currentCount = count.get();
+                    System.out.println("[IslandiumEdit] Undo batch " + done + "/" + totalBatches + " - " + currentCount + "/" + totalChanges + " blocs (" + (currentCount * 100 / totalChanges) + "%)");
+
+                    if (done >= totalBatches) {
+                        future.complete(currentCount);
                     }
                 });
             }, delay, TimeUnit.MILLISECONDS);
@@ -1034,6 +1044,9 @@ public class BlockOperations {
 
         List<List<BlockChange>> batches = partition(changes, EditPlugin.BLOCKS_PER_BATCH);
         int totalBatches = batches.size();
+
+        int totalChanges = changes.size();
+        System.out.println("[IslandiumEdit] Redo: " + totalChanges + " blocs en " + totalBatches + " batches");
 
         for (int i = 0; i < batches.size(); i++) {
             List<BlockChange> batch = batches.get(i);
@@ -1074,9 +1087,12 @@ public class BlockOperations {
                         }
                     }
 
-                    if (completedBatches.incrementAndGet() >= totalBatches) {
-                        System.out.println("[IslandiumEdit] Redo complete: " + count.get() + "/" + changes.size() + " blocks restored");
-                        future.complete(count.get());
+                    int done = completedBatches.incrementAndGet();
+                    int currentCount = count.get();
+                    System.out.println("[IslandiumEdit] Redo batch " + done + "/" + totalBatches + " - " + currentCount + "/" + totalChanges + " blocs (" + (currentCount * 100 / totalChanges) + "%)");
+
+                    if (done >= totalBatches) {
+                        future.complete(currentCount);
                     }
                 });
             }, delay, TimeUnit.MILLISECONDS);
