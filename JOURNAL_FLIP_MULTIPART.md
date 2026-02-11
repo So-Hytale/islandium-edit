@@ -100,4 +100,23 @@ La v6 essayait de "corriger" le lit en ne changeant pas le yaw et en compensant 
 
 **Implementation**: La compensation utilise `origYaw` et `transYaw` pour determiner la direction du swap, et `transSizeInfo.gridDepth()` pour la taille de la compensation.
 
+**Resultat**: ECHEC PARTIEL - flipX et rot180 OK ! Mais flipZ casse les BANCS (decales de 1 en X).
+
+**Analyse**: `transSizeInfo.gridDepth()` retourne la dimension Z du bounding box au yaw TRANSFORME. Mais un banc 2x1x1 au yaw=3 a son width (2) aligne en Z → `Box.depth() = 2` → `gridDepth = 2` au lieu de 1. La compensation `worldX -= 1` decale les bancs alors qu'ils ne devraient pas etre affectes.
+
+**Bug**: `gridDepth()` du `BlockSizeInfo` depend du yaw. Ce n'est PAS la profondeur conceptuelle du bloc mais la dimension Z du bounding box qui tourne avec le yaw.
+
+## v9 - Utiliser dimensions conceptuelles (yaw=0) pour compensation (2026-02-11 ~11:15)
+**Approche**: Meme logique que v8, mais utiliser `getBlockSize(blockType, 0)` (yaw=0 = rotation de base) pour obtenir les dimensions CONCEPTUELLES fixes du bloc, independantes de la rotation.
+
+**Principe cle**: Au yaw 0, les dimensions du bounding box correspondent aux dimensions conceptuelles:
+- `gridWidth()` = taille sur l'axe principal X (width)
+- `gridDepth()` = taille sur l'axe transversal Z (depth)
+- `gridHeight()` = taille verticale Y (height)
+
+Pour un banc 2x1x1: `gridDepth(yaw=0) = 1` → compensation = 0 → pas de decalage. OK !
+Pour un lit 2x2x3: `gridDepth(yaw=0) = 3` → compensation = 2 → decalage correct. OK !
+
+Le probleme de v8 etait que `gridDepth(yaw=3)` pour un banc retournait 2 (le width tourne en Z).
+
 **Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.
