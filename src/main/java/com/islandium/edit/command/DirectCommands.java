@@ -99,6 +99,7 @@ public class DirectCommands {
         // Admin
         registry.registerCommand(new ReloadCommand(plugin));
         registry.registerCommand(new DebugFilterCommand());
+        registry.registerCommand(new LogExportCommand());
         registry.registerCommand(new BlockInfoCommand(plugin));
     }
 
@@ -1686,6 +1687,46 @@ public class DirectCommands {
     }
 
     // === Helper pour les formes ===
+
+    /**
+     * /elog zip   - Crée un ZIP de tous les fichiers de log
+     * /elog       - Affiche le chemin du dossier de logs
+     */
+    public static class LogExportCommand extends AbstractCommand {
+        public LogExportCommand() {
+            super("elog", "Exporter les logs debug");
+            setAllowsExtraArguments(true);
+        }
+
+        @Override
+        public CompletableFuture<Void> execute(CommandContext ctx) {
+            DebugLogger dbg = DebugLogger.get();
+            if (dbg == null) {
+                ctx.sendMessage(ColorUtil.parse("&cDebug logger non initialise"));
+                return CompletableFuture.completedFuture(null);
+            }
+
+            String input = ctx.getInputString();
+            String[] parts = input.split("\\s+");
+            String action = parts.length > 1 ? parts[1].toLowerCase() : "";
+
+            if ("zip".equals(action)) {
+                java.nio.file.Path zipPath = dbg.zipLogs();
+                if (zipPath != null) {
+                    ctx.sendMessage(ColorUtil.parse("&aLogs zippes: &f" + zipPath.getFileName()));
+                    ctx.sendMessage(ColorUtil.parse("&7Dossier: &f" + dbg.getLogsDir()));
+                } else {
+                    ctx.sendMessage(ColorUtil.parse("&cErreur lors du zip des logs"));
+                }
+            } else {
+                ctx.sendMessage(ColorUtil.parse("&7Dossier logs: &f" + dbg.getLogsDir()));
+                ctx.sendMessage(ColorUtil.parse("&7Fichiers: master.log, copy.log, paste.log, flip.log, undo.log, preview.log"));
+                ctx.sendMessage(ColorUtil.parse("&7Utiliser &e/elog zip &7pour creer un ZIP"));
+            }
+
+            return CompletableFuture.completedFuture(null);
+        }
+    }
 
     private static CompletableFuture<Void> placeShape(CommandContext ctx, Player player, Shape shape, String blockTypeArg, EditPlugin plugin) {
         try {
