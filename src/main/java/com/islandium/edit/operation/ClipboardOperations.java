@@ -717,37 +717,45 @@ public class ClipboardOperations {
         boolean useNativeFlip = overrides != null && overrides.isUseNativeFlip();
 
         // FlipX (miroir est/ouest)
-        // Standard: 1(Est) <-> 3(Ouest)
-        // Pour les blocs multi-part : aussi 0(Nord) <-> 2(Sud) car la direction
-        // du filler doit être inversée pour que Hytale recrée le filler du bon côté.
-        // Pour les blocs SYMMETRIC, 0<->2 ne change pas l'apparence visuelle.
+        // Blocs normaux: swap standard 1(Est) <-> 3(Ouest)
+        // Blocs multi-part SYMMETRIC: swap UNIQUEMENT 0(Nord) <-> 2(Sud)
+        //   - 0<->2 inverse la direction X du filler (correct pour flipX)
+        //   - NE PAS swap 1<->3 car cela inverserait la direction Z du filler (flipX ne touche pas Z)
+        //   - Pour SYMMETRIC, yaw 1 et 3 ont la même apparence visuelle
         if (flipX) {
             boolean isMultiPart = BlockSizeHelper.isMultiPart(blockType);
             if (useNativeFlip) {
                 // Essayer l'API native BlockFlipType.flipYaw()
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
-                if (nativeYaw >= 0) {
+                if (isMultiPart) {
+                    // Multi-part SYMMETRIC: SEULEMENT swap 0 <-> 2 (inverser direction X du filler)
+                    // NE PAS swap 1 <-> 3 (garder direction Z du filler intacte)
+                    if (yaw == 0) yaw = 2;
+                    else if (yaw == 2) yaw = 0;
+                } else if (nativeYaw >= 0) {
                     yaw = nativeYaw;
                 } else {
                     // Fallback: swap standard 1 <-> 3
                     if (yaw == 1) yaw = 3;
                     else if (yaw == 3) yaw = 1;
                 }
-                // Pour multi-part: aussi swap 0 <-> 2 si l'API native ne l'a pas fait
-                if (isMultiPart && (nativeYaw < 0 || nativeYaw == yaw)) {
-                    if (yaw == 0) yaw = 2;
-                    else if (yaw == 2) yaw = 0;
-                }
             } else {
                 // Mode overrides manuels
                 boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipX(blockType);
                 if (!skipStandard) {
-                    if (yaw == 1) yaw = 3;
-                    else if (yaw == 3) yaw = 1;
-                    // Pour multi-part: aussi swap 0 <-> 2
                     if (isMultiPart) {
+                        // Pour les blocs multi-part SYMMETRIC :
+                        // FlipX = inverser la direction X du filler = swap 0 <-> 2 UNIQUEMENT.
+                        // Le swap standard 1 <-> 3 inverserait aussi la direction Z du filler,
+                        // ce qui est incorrect (flipX ne touche pas Z).
+                        // Pour SYMMETRIC, yaw 1 et 3 ont la même apparence visuelle,
+                        // donc ne PAS swap 1 <-> 3.
                         if (yaw == 0) yaw = 2;
                         else if (yaw == 2) yaw = 0;
+                    } else {
+                        // Blocs normaux (non multi-part) : swap standard 1 <-> 3
+                        if (yaw == 1) yaw = 3;
+                        else if (yaw == 3) yaw = 1;
                     }
                 }
                 if (overrides != null) {
@@ -757,36 +765,45 @@ public class ClipboardOperations {
         }
 
         // FlipZ (miroir nord/sud)
-        // Standard: 0(Nord) <-> 2(Sud)
-        // Pour les blocs multi-part : aussi 1(Est) <-> 3(Ouest) car la direction
-        // du filler en Z doit être inversée.
+        // Blocs normaux: swap standard 0(Nord) <-> 2(Sud)
+        // Blocs multi-part SYMMETRIC: swap UNIQUEMENT 1(Est) <-> 3(Ouest)
+        //   - 1<->3 inverse la direction Z du filler (correct pour flipZ)
+        //   - NE PAS swap 0<->2 car cela inverserait la direction X du filler (flipZ ne touche pas X)
+        //   - Pour SYMMETRIC, yaw 0 et 2 ont la même apparence visuelle
         if (flipZ) {
             boolean isMultiPartZ = BlockSizeHelper.isMultiPart(blockType);
             if (useNativeFlip) {
                 // Essayer l'API native BlockFlipType.flipYaw()
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
-                if (nativeYaw >= 0) {
+                if (isMultiPartZ) {
+                    // Multi-part SYMMETRIC: SEULEMENT swap 1 <-> 3 (inverser direction Z du filler)
+                    // NE PAS swap 0 <-> 2 (garder direction X du filler intacte)
+                    if (yaw == 1) yaw = 3;
+                    else if (yaw == 3) yaw = 1;
+                } else if (nativeYaw >= 0) {
                     yaw = nativeYaw;
                 } else {
                     // Fallback: swap standard 0 <-> 2
                     if (yaw == 0) yaw = 2;
                     else if (yaw == 2) yaw = 0;
                 }
-                // Pour multi-part: aussi swap 1 <-> 3 si l'API native ne l'a pas fait
-                if (isMultiPartZ && (nativeYaw < 0 || nativeYaw == yaw)) {
-                    if (yaw == 1) yaw = 3;
-                    else if (yaw == 3) yaw = 1;
-                }
             } else {
                 // Mode overrides manuels
                 boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipZ(blockType);
                 if (!skipStandard) {
-                    if (yaw == 0) yaw = 2;
-                    else if (yaw == 2) yaw = 0;
-                    // Pour multi-part: aussi swap 1 <-> 3
                     if (isMultiPartZ) {
+                        // Pour les blocs multi-part SYMMETRIC :
+                        // FlipZ = inverser la direction Z du filler = swap 1 <-> 3 UNIQUEMENT.
+                        // Le swap standard 0 <-> 2 inverserait aussi la direction X du filler,
+                        // ce qui est incorrect (flipZ ne touche pas X).
+                        // Pour SYMMETRIC, yaw 0 et 2 ont la même apparence visuelle,
+                        // donc ne PAS swap 0 <-> 2.
                         if (yaw == 1) yaw = 3;
                         else if (yaw == 3) yaw = 1;
+                    } else {
+                        // Blocs normaux (non multi-part) : swap standard 0 <-> 2
+                        if (yaw == 0) yaw = 2;
+                        else if (yaw == 2) yaw = 0;
                     }
                 }
                 if (overrides != null) {
