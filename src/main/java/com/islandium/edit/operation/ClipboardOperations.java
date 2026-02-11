@@ -809,11 +809,16 @@ public class ClipboardOperations {
         // Pour les blocs normaux : swap standard 1<->3 (Est<->Ouest) + overrides éventuels.
         if (flipX) {
             if (isMultiPart) {
-                // Multi-part: swap COMPLET (0<->2 et 1<->3)
+                // Multi-part flipX:
+                //   - swap 0<->2 TOUJOURS (width en X s'inverse = axe miroir)
+                //   - swap 1<->3 SEULEMENT si conceptDepth > 1 (depth en X s'inverse)
+                //     Si cD=1, pas besoin d'inverser le depth (1 seul bloc)
+                BlockSizeHelper.BlockSizeInfo bsi = BlockSizeHelper.getBlockSize(blockType, 0);
+                int cD = bsi != null ? bsi.gridDepth() : 1;
                 if (yaw == 0) yaw = 2;
                 else if (yaw == 2) yaw = 0;
-                else if (yaw == 1) yaw = 3;
-                else if (yaw == 3) yaw = 1;
+                else if (cD > 1 && yaw == 1) yaw = 3;
+                else if (cD > 1 && yaw == 3) yaw = 1;
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
                 if (nativeYaw >= 0) {
@@ -844,11 +849,16 @@ public class ClipboardOperations {
         // Pour les blocs normaux : swap standard 0<->2 (Nord<->Sud) + overrides éventuels.
         if (flipZ) {
             if (isMultiPart) {
-                // Multi-part: swap COMPLET (0<->2 et 1<->3)
-                if (yaw == 0) yaw = 2;
-                else if (yaw == 2) yaw = 0;
-                else if (yaw == 1) yaw = 3;
+                // Multi-part flipZ:
+                //   - swap 1<->3 TOUJOURS (width en Z s'inverse = axe miroir)
+                //   - swap 0<->2 SEULEMENT si conceptDepth > 1 (depth en Z s'inverse)
+                //     Si cD=1, pas besoin d'inverser le depth (1 seul bloc)
+                BlockSizeHelper.BlockSizeInfo bsi = BlockSizeHelper.getBlockSize(blockType, 0);
+                int cD = bsi != null ? bsi.gridDepth() : 1;
+                if (yaw == 1) yaw = 3;
                 else if (yaw == 3) yaw = 1;
+                else if (cD > 1 && yaw == 0) yaw = 2;
+                else if (cD > 1 && yaw == 2) yaw = 0;
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
                 if (nativeYaw >= 0) {
