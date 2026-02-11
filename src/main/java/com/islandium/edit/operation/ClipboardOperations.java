@@ -347,23 +347,71 @@ public class ClipboardOperations {
                     int originalRotation = clipboard.getRotation(cx, cy, cz);
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
 
-                    // Note: la compensation de position des blocs multi-part est gérée
-                    // par le swap de yaw dans transformRotation() (0<->2 pour flipX, 1<->3 pour flipZ).
-                    // Cela fait que Hytale crée le filler dans la bonne direction après le flip,
-                    // donc aucun décalage de position n'est nécessaire.
+                    // Compensation de position pour les blocs multi-part.
+                    // Le swap de yaw standard (1<->3 pour flipX, 0<->2 pour flipZ) change
+                    // la direction du filler créé par Hytale. Il faut décaler l'origin pour
+                    // compenser, afin que l'ensemble origin+filler occupe la bonne zone mirrorée.
                     //
-                    // Pour le flip vertical, le filler Y va toujours en +Y.
-                    // Après un vFlip, il faut décaler l'origin pour compenser.
-                    if (vFlip) {
+                    // Direction du filler par yaw: 0=+X, 1=+Z, 2=-X, 3=-Z
+                    // FlipX (swap 1<->3): filler Z inversé -> compenser en Z
+                    // FlipZ (swap 0<->2): filler X inversé -> compenser en X
+                    // vFlip: filler Y toujours en +Y -> compenser en Y
+                    {
                         BlockSizeHelper.BlockSizeInfo origSizeInfo = BlockSizeHelper.getBlockSize(blockType, originalRotation);
                         BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
                         if (origSizeInfo != null && transSizeInfo != null && origSizeInfo.isMultiPart()) {
-                            int origGh = origSizeInfo.gridHeight();
-                            int transGh = transSizeInfo.gridHeight();
-                            if (transGh > 1 && origGh > 1) {
-                                worldY += (transGh - 1);
-                                if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part vFlip: " + blockType + " origGh=" + origGh + " transGh=" + transGh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                            int origYaw = originalRotation % 4;
+                            int transYaw = transformedRotation % 4;
+
+                            if (flipX && origYaw != transYaw) {
+                                // FlipX swap 1<->3 : la direction Z du filler est inversée.
+                                // Calculer le gridWidth (taille en Z pour yaw 1 ou 3)
+                                int gw = transSizeInfo.gridWidth();  // gridWidth au yaw transformé
+                                if (gw > 1) {
+                                    // yaw 1->3 : filler passe de +Z à -Z -> décaler origin vers +Z
+                                    // yaw 3->1 : filler passe de -Z à +Z -> décaler origin vers -Z
+                                    if (origYaw == 1 && transYaw == 3) {
+                                        worldZ += (gw - 1);
+                                    } else if (origYaw == 3 && transYaw == 1) {
+                                        worldZ -= (gw - 1);
+                                    }
+                                    // yaw 0->2 ou 2->0 via flipX ne devrait pas arriver
+                                    // (flipX standard ne touche que 1<->3)
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part flipX: " + blockType
+                                                + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                                + " gw=" + gw + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
+                                }
+                            }
+
+                            if (flipZ && origYaw != transYaw) {
+                                // FlipZ swap 0<->2 : la direction X du filler est inversée.
+                                int gw = transSizeInfo.gridWidth();
+                                if (gw > 1) {
+                                    // yaw 0->2 : filler passe de +X à -X -> décaler origin vers +X
+                                    // yaw 2->0 : filler passe de -X à +X -> décaler origin vers -X
+                                    if (origYaw == 0 && transYaw == 2) {
+                                        worldX += (gw - 1);
+                                    } else if (origYaw == 2 && transYaw == 0) {
+                                        worldX -= (gw - 1);
+                                    }
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part flipZ: " + blockType
+                                                + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                                + " gw=" + gw + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
+                                }
+                            }
+
+                            if (vFlip) {
+                                int transGh = transSizeInfo.gridHeight();
+                                if (transGh > 1) {
+                                    worldY += (transGh - 1);
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part vFlip: " + blockType
+                                                + " transGh=" + transGh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
                                 }
                             }
                         }
@@ -716,47 +764,23 @@ public class ClipboardOperations {
         RotationOverrides overrides = RotationOverrides.get();
         boolean useNativeFlip = overrides != null && overrides.isUseNativeFlip();
 
-        // FlipX (miroir est/ouest)
-        // Blocs normaux: swap standard 1(Est) <-> 3(Ouest)
-        // Blocs multi-part SYMMETRIC: swap UNIQUEMENT 0(Nord) <-> 2(Sud)
-        //   - 0<->2 inverse la direction X du filler (correct pour flipX)
-        //   - NE PAS swap 1<->3 car cela inverserait la direction Z du filler (flipX ne touche pas Z)
-        //   - Pour SYMMETRIC, yaw 1 et 3 ont la même apparence visuelle
+        // FlipX (miroir est/ouest) — swap standard 1(Est) <-> 3(Ouest) pour TOUS les blocs.
+        // Les blocs multipart ont aussi besoin du swap standard pour l'apparence visuelle.
+        // La compensation de position du filler est gérée séparément dans le code de paste.
         if (flipX) {
-            boolean isMultiPart = BlockSizeHelper.isMultiPart(blockType);
             if (useNativeFlip) {
-                // Essayer l'API native BlockFlipType.flipYaw()
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
-                if (isMultiPart) {
-                    // Multi-part SYMMETRIC: SEULEMENT swap 0 <-> 2 (inverser direction X du filler)
-                    // NE PAS swap 1 <-> 3 (garder direction Z du filler intacte)
-                    if (yaw == 0) yaw = 2;
-                    else if (yaw == 2) yaw = 0;
-                } else if (nativeYaw >= 0) {
+                if (nativeYaw >= 0) {
                     yaw = nativeYaw;
                 } else {
-                    // Fallback: swap standard 1 <-> 3
                     if (yaw == 1) yaw = 3;
                     else if (yaw == 3) yaw = 1;
                 }
             } else {
-                // Mode overrides manuels
                 boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipX(blockType);
                 if (!skipStandard) {
-                    if (isMultiPart) {
-                        // Pour les blocs multi-part SYMMETRIC :
-                        // FlipX = inverser la direction X du filler = swap 0 <-> 2 UNIQUEMENT.
-                        // Le swap standard 1 <-> 3 inverserait aussi la direction Z du filler,
-                        // ce qui est incorrect (flipX ne touche pas Z).
-                        // Pour SYMMETRIC, yaw 1 et 3 ont la même apparence visuelle,
-                        // donc ne PAS swap 1 <-> 3.
-                        if (yaw == 0) yaw = 2;
-                        else if (yaw == 2) yaw = 0;
-                    } else {
-                        // Blocs normaux (non multi-part) : swap standard 1 <-> 3
-                        if (yaw == 1) yaw = 3;
-                        else if (yaw == 3) yaw = 1;
-                    }
+                    if (yaw == 1) yaw = 3;
+                    else if (yaw == 3) yaw = 1;
                 }
                 if (overrides != null) {
                     yaw = overrides.applyFlipXYaw(yaw, blockType);
@@ -764,47 +788,21 @@ public class ClipboardOperations {
             }
         }
 
-        // FlipZ (miroir nord/sud)
-        // Blocs normaux: swap standard 0(Nord) <-> 2(Sud)
-        // Blocs multi-part SYMMETRIC: swap UNIQUEMENT 1(Est) <-> 3(Ouest)
-        //   - 1<->3 inverse la direction Z du filler (correct pour flipZ)
-        //   - NE PAS swap 0<->2 car cela inverserait la direction X du filler (flipZ ne touche pas X)
-        //   - Pour SYMMETRIC, yaw 0 et 2 ont la même apparence visuelle
+        // FlipZ (miroir nord/sud) — swap standard 0(Nord) <-> 2(Sud) pour TOUS les blocs.
         if (flipZ) {
-            boolean isMultiPartZ = BlockSizeHelper.isMultiPart(blockType);
             if (useNativeFlip) {
-                // Essayer l'API native BlockFlipType.flipYaw()
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
-                if (isMultiPartZ) {
-                    // Multi-part SYMMETRIC: SEULEMENT swap 1 <-> 3 (inverser direction Z du filler)
-                    // NE PAS swap 0 <-> 2 (garder direction X du filler intacte)
-                    if (yaw == 1) yaw = 3;
-                    else if (yaw == 3) yaw = 1;
-                } else if (nativeYaw >= 0) {
+                if (nativeYaw >= 0) {
                     yaw = nativeYaw;
                 } else {
-                    // Fallback: swap standard 0 <-> 2
                     if (yaw == 0) yaw = 2;
                     else if (yaw == 2) yaw = 0;
                 }
             } else {
-                // Mode overrides manuels
                 boolean skipStandard = overrides != null && overrides.shouldReplaceStandardFlipZ(blockType);
                 if (!skipStandard) {
-                    if (isMultiPartZ) {
-                        // Pour les blocs multi-part SYMMETRIC :
-                        // FlipZ = inverser la direction Z du filler = swap 1 <-> 3 UNIQUEMENT.
-                        // Le swap standard 0 <-> 2 inverserait aussi la direction X du filler,
-                        // ce qui est incorrect (flipZ ne touche pas X).
-                        // Pour SYMMETRIC, yaw 0 et 2 ont la même apparence visuelle,
-                        // donc ne PAS swap 0 <-> 2.
-                        if (yaw == 1) yaw = 3;
-                        else if (yaw == 3) yaw = 1;
-                    } else {
-                        // Blocs normaux (non multi-part) : swap standard 0 <-> 2
-                        if (yaw == 0) yaw = 2;
-                        else if (yaw == 2) yaw = 0;
-                    }
+                    if (yaw == 0) yaw = 2;
+                    else if (yaw == 2) yaw = 0;
                 }
                 if (overrides != null) {
                     yaw = overrides.applyFlipZYaw(yaw, blockType);
