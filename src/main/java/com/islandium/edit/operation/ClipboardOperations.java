@@ -273,6 +273,7 @@ public class ClipboardOperations {
         int debugBlockIndex = 0;
         boolean flipX = transform.isFlipX();
         boolean flipZ = transform.isFlipZ();
+        boolean vFlip = transform.isVerticalFlip();
 
         // Itérer sur tout le volume du clipboard
         int clipWidth = clipboard.getWidth();
@@ -358,14 +359,16 @@ public class ClipboardOperations {
                     // Après un flipX, un filler qui allait en +X devrait aller en -X, et vice versa.
                     // Si le yaw transformé place le filler en +X, on décale l'origin en -(gw-1).
                     // Si le yaw transformé place le filler en -X, on décale l'origin en +(gw-1).
-                    if (flipX || flipZ) {
+                    if (flipX || flipZ || vFlip) {
                         BlockSizeHelper.BlockSizeInfo origSizeInfo = BlockSizeHelper.getBlockSize(blockType, originalRotation);
                         BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
                         if (origSizeInfo != null && transSizeInfo != null && origSizeInfo.isMultiPart()) {
                             int origGw = origSizeInfo.gridWidth();
                             int origGd = origSizeInfo.gridDepth();
+                            int origGh = origSizeInfo.gridHeight();
                             int transGw = transSizeInfo.gridWidth();
                             int transGd = transSizeInfo.gridDepth();
+                            int transGh = transSizeInfo.gridHeight();
                             int transYaw = transformedRotation % 4;
                             if (flipX && transGw > 1 && origGw > 1) {
                                 // yaw=0 -> filler en +X -> décaler origin en -X
@@ -389,6 +392,15 @@ public class ClipboardOperations {
                                 }
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipZ: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGd=" + origGd + " transGd=" + transGd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                }
+                            }
+                            // Flip vertical : le filler Y va toujours en +Y (vers le haut).
+                            // Après un flipY, le filler devrait aller en -Y, mais Hytale
+                            // le crée toujours en +Y -> décaler l'origin vers le haut.
+                            if (vFlip && transGh > 1 && origGh > 1) {
+                                worldY += (transGh - 1);
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part vFlip: " + blockType + " origGh=" + origGh + " transGh=" + transGh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
                         }
