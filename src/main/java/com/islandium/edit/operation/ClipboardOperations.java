@@ -348,17 +348,16 @@ public class ClipboardOperations {
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
 
                     // Correction de position pour les blocs multi-part lors des flips.
-                    // Quand Hytale place un bloc multi-part (ex: banc 2x1x1), il crée automatiquement
-                    // le filler dans une direction relative au bloc origin, déterminée par le yaw.
-                    // Un flip miroir inverse les coordonnées monde mais PAS la direction interne du filler.
-                    // Il faut compenser en décalant la position du bloc origin.
+                    // Quand Hytale place un bloc multi-part, il crée le filler dans une direction
+                    // relative au bloc origin. Un flip miroir inverse les coordonnées monde
+                    // mais PAS la direction du filler -> il faut compenser.
                     //
-                    // La direction du filler dépend du yaw TRANSFORMÉ :
-                    //   yaw=0 -> filler en +X, yaw=2 -> filler en -X
-                    //   yaw=1 -> filler en +Z, yaw=3 -> filler en -Z
-                    // Après un flipX, un filler qui allait en +X devrait aller en -X, et vice versa.
-                    // Si le yaw transformé place le filler en +X, on décale l'origin en -(gw-1).
-                    // Si le yaw transformé place le filler en -X, on décale l'origin en +(gw-1).
+                    // Deux cas selon la forme du bloc :
+                    // 1) Bloc asymétrique en XZ (ex: banc 2x1x1) : la direction du filler en X
+                    //    dépend du yaw. yaw=0 -> +X, yaw=2 -> -X. On utilise transYaw.
+                    // 2) Bloc carré/cubique en XZ (ex: 2x2x1, 3x3x3) : le filler est toujours
+                    //    en +X et +Z quel que soit le yaw. On décale toujours en -(gw-1).
+                    // Pour Y : le filler va toujours en +Y, indépendamment du yaw.
                     if (flipX || flipZ || vFlip) {
                         BlockSizeHelper.BlockSizeInfo origSizeInfo = BlockSizeHelper.getBlockSize(blockType, originalRotation);
                         BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
@@ -370,28 +369,49 @@ public class ClipboardOperations {
                             int transGd = transSizeInfo.gridDepth();
                             int transGh = transSizeInfo.gridHeight();
                             int transYaw = transformedRotation % 4;
+
+                            // Détecter si le bloc est carré en XZ (mêmes dimensions à yaw=0 et yaw=1)
+                            // Pour un bloc carré, le yaw ne change pas la direction du filler.
+                            BlockSizeHelper.BlockSizeInfo sizeAtYaw0 = BlockSizeHelper.getBlockSize(blockType, 0);
+                            BlockSizeHelper.BlockSizeInfo sizeAtYaw1 = BlockSizeHelper.getBlockSize(blockType, 1);
+                            boolean squareXZ = sizeAtYaw0 != null && sizeAtYaw1 != null
+                                    && sizeAtYaw0.gridWidth() == sizeAtYaw1.gridWidth()
+                                    && sizeAtYaw0.gridDepth() == sizeAtYaw1.gridDepth();
+
                             if (flipX && transGw > 1 && origGw > 1) {
-                                // yaw=0 -> filler en +X -> décaler origin en -X
-                                // yaw=2 -> filler en -X -> décaler origin en +X
-                                if (transYaw == 0) {
+                                if (squareXZ) {
+                                    // Bloc carré : filler toujours en +X -> toujours décaler en -X
                                     worldX -= (transGw - 1);
-                                } else if (transYaw == 2) {
-                                    worldX += (transGw - 1);
+                                } else {
+                                    // Bloc asymétrique : direction dépend du yaw
+                                    // yaw=0 -> filler en +X -> décaler en -X
+                                    // yaw=2 -> filler en -X -> décaler en +X
+                                    if (transYaw == 0) {
+                                        worldX -= (transGw - 1);
+                                    } else if (transYaw == 2) {
+                                        worldX += (transGw - 1);
+                                    }
                                 }
                                 if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part flipX: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGw=" + origGw + " transGw=" + transGw + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    dbg.log("PASTE", "  Multi-part flipX: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGw=" + origGw + " transGw=" + transGw + " square=" + squareXZ + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
                             if (flipZ && transGd > 1 && origGd > 1) {
-                                // yaw=1 -> filler en +Z -> décaler origin en -Z
-                                // yaw=3 -> filler en -Z -> décaler origin en +Z
-                                if (transYaw == 1) {
+                                if (squareXZ) {
+                                    // Bloc carré : filler toujours en +Z -> toujours décaler en -Z
                                     worldZ -= (transGd - 1);
-                                } else if (transYaw == 3) {
-                                    worldZ += (transGd - 1);
+                                } else {
+                                    // Bloc asymétrique : direction dépend du yaw
+                                    // yaw=1 -> filler en +Z -> décaler en -Z
+                                    // yaw=3 -> filler en -Z -> décaler en +Z
+                                    if (transYaw == 1) {
+                                        worldZ -= (transGd - 1);
+                                    } else if (transYaw == 3) {
+                                        worldZ += (transGd - 1);
+                                    }
                                 }
                                 if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part flipZ: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGd=" + origGd + " transGd=" + transGd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    dbg.log("PASTE", "  Multi-part flipZ: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGd=" + origGd + " transGd=" + transGd + " square=" + squareXZ + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
                             // Flip vertical : le filler Y va toujours en +Y (vers le haut).
