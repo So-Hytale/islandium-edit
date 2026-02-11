@@ -81,4 +81,23 @@ La v6 essayait de "corriger" le lit en ne changeant pas le yaw et en compensant 
 
 **Conclusion**: Le swap d'axe (v5/v7) est l'approche correcte pour les multipart. Le visuel "inverse" du lit est le comportement normal d'un miroir.
 
-**Resultat**: SUCCES ! Tous les blocs multipart (bancs, lits, lanternes) sont correctement en miroir pour flipX, flipZ et rotation 180. Aucun decalage de position. Le fix cle etait la detection multipart via `getBlockSize()` au lieu de `isMultiPart()` (qui ne detectait pas certains blocs). Confirme visuellement par l'utilisateur.
+**Resultat**: PARTIEL - Bancs OK pour flipX et rot180. Mais pour flipZ, 2 bancs manquants. Lits decales pour flipX et flipZ. Rot180 = seulement lit decale, bancs OK.
+
+**Analyse post-test**: Le swap 0<->2 (flipX) ou 1<->3 (flipZ) change la direction du filler width ET depth. Pour les blocs avec depth=1 (banc 2x1x1), pas de probleme. Pour les blocs avec depth>1 (lit 2x2x3), le swap inverse aussi la direction transversale (Z pour flipX, X pour flipZ), ce qui decale l'origin.
+
+## v8 - Compensation profondeur transversale pour grands multipart (2026-02-11 ~11:00)
+**Approche**: Conserver le swap axe de v7 (0<->2 pour flipX, 1<->3 pour flipZ) + ajouter une compensation de position TRANSVERSALE uniquement pour les blocs avec depth > 1.
+
+**Principe cle**: Quand on swap yaw 0<->2 (flipX), le filler change de direction sur l'axe X (width) mais AUSSI sur l'axe Z (depth). Pour un bloc avec depth=1 (banc), ca n'a pas d'effet. Pour un bloc avec depth=3 (lit), le filler Z change de direction → besoin de compenser Z.
+
+**Compensation par cas**:
+- FlipX + swap 2->0 : `worldZ -= (gridDepth - 1)` (profondeur passe de -Z a +Z)
+- FlipX + swap 0->2 : `worldZ += (gridDepth - 1)` (profondeur passe de +Z a -Z)
+- FlipZ + swap 1->3 : `worldX -= (gridDepth - 1)` (profondeur passe de -X a +X)
+- FlipZ + swap 3->1 : `worldX += (gridDepth - 1)` (profondeur passe de +X a -X)
+- Benches (depth=1) : compensation = 0, pas affectes
+- vFlip : `worldY += (gridHeight - 1)` (inchange)
+
+**Implementation**: La compensation utilise `origYaw` et `transYaw` pour determiner la direction du swap, et `transSizeInfo.gridDepth()` pour la taille de la compensation.
+
+**Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.

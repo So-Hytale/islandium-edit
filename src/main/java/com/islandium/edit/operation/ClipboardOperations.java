@@ -372,57 +372,69 @@ public class ClipboardOperations {
                     //
                     // vFlip: filler Y toujours en +Y -> worldY += (height-1)
                     {
+                        // Utiliser yaw=0 pour obtenir les dimensions CONCEPTUELLES du bloc
+                        // (indépendantes de la rotation). Au yaw 0:
+                        //   gridWidth = taille sur l'axe principal (X)
+                        //   gridDepth = taille sur l'axe transversal (Z)
+                        //   gridHeight = taille verticale (Y)
+                        // Ces valeurs ne changent pas avec la rotation, contrairement aux
+                        // dimensions du bounding box qui tournent avec le yaw.
+                        BlockSizeHelper.BlockSizeInfo baseSizeInfo = BlockSizeHelper.getBlockSize(blockType, 0);
                         BlockSizeHelper.BlockSizeInfo origSizeInfo = BlockSizeHelper.getBlockSize(blockType, originalRotation);
-                        BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
-                        if (origSizeInfo != null && transSizeInfo != null && origSizeInfo.isMultiPart()) {
+                        if (baseSizeInfo != null && origSizeInfo != null && origSizeInfo.isMultiPart()) {
                             int origYaw = originalRotation % 4;
                             int transYaw = transformedRotation % 4;
 
+                            // Dimensions conceptuelles du bloc (au yaw 0)
+                            int conceptDepth = baseSizeInfo.gridDepth();   // profondeur transversale
+                            int conceptHeight = baseSizeInfo.gridHeight(); // hauteur
+
                             if (flipX && origYaw != transYaw) {
-                                // FlipX swap 0<->2: compensation Z pour le depth transversal
-                                int gd = transSizeInfo.gridDepth();
-                                if (gd > 1) {
+                                // FlipX swap 0<->2: la direction transversale (Z) s'inverse
+                                // Seulement si conceptDepth > 1 (sinon compensation = 0)
+                                if (conceptDepth > 1) {
                                     if (origYaw == 2 && transYaw == 0) {
                                         // depth passe de -Z à +Z -> décaler origin vers -Z
-                                        worldZ -= (gd - 1);
+                                        worldZ -= (conceptDepth - 1);
                                     } else if (origYaw == 0 && transYaw == 2) {
                                         // depth passe de +Z à -Z -> décaler origin vers +Z
-                                        worldZ += (gd - 1);
+                                        worldZ += (conceptDepth - 1);
                                     }
-                                    if (dbg != null) {
-                                        dbg.log("PASTE", "  Multi-part flipX depth comp: " + blockType
-                                                + " origYaw=" + origYaw + " transYaw=" + transYaw
-                                                + " gd=" + gd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
-                                    }
+                                }
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part flipX depth comp: " + blockType
+                                            + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                            + " conceptDepth=" + conceptDepth
+                                            + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
 
                             if (flipZ && origYaw != transYaw) {
-                                // FlipZ swap 1<->3: compensation X pour le depth transversal
-                                int gd = transSizeInfo.gridDepth();
-                                if (gd > 1) {
+                                // FlipZ swap 1<->3: la direction transversale (X) s'inverse
+                                // Seulement si conceptDepth > 1 (sinon compensation = 0)
+                                if (conceptDepth > 1) {
                                     if (origYaw == 1 && transYaw == 3) {
                                         // depth passe de -X à +X -> décaler origin vers -X
-                                        worldX -= (gd - 1);
+                                        worldX -= (conceptDepth - 1);
                                     } else if (origYaw == 3 && transYaw == 1) {
                                         // depth passe de +X à -X -> décaler origin vers +X
-                                        worldX += (gd - 1);
+                                        worldX += (conceptDepth - 1);
                                     }
-                                    if (dbg != null) {
-                                        dbg.log("PASTE", "  Multi-part flipZ depth comp: " + blockType
-                                                + " origYaw=" + origYaw + " transYaw=" + transYaw
-                                                + " gd=" + gd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
-                                    }
+                                }
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part flipZ depth comp: " + blockType
+                                            + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                            + " conceptDepth=" + conceptDepth
+                                            + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
 
                             if (vFlip) {
-                                int gh = transSizeInfo.gridHeight();
-                                if (gh > 1) {
-                                    worldY += (gh - 1);
+                                if (conceptHeight > 1) {
+                                    worldY += (conceptHeight - 1);
                                     if (dbg != null) {
                                         dbg.log("PASTE", "  Multi-part vFlip: " + blockType
-                                                + " gh=" + gh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                                + " gh=" + conceptHeight + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                     }
                                 }
                             }
