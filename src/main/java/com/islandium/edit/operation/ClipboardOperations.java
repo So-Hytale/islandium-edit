@@ -309,15 +309,34 @@ public class ClipboardOperations {
                         int baseWZ = playerZ + (int) Math.floor(tf[2]);
 
                         // Marquer toutes les positions filler (hors base) comme protégées
+                        // Les offsets filler doivent être pivotés selon le yaw du bloc transformé
                         int gw = sizeInfo.gridWidth();
                         int gh = sizeInfo.gridHeight();
                         int gd = sizeInfo.gridDepth();
+                        int yaw = transformedRot % 4; // 0=Nord, 1=Est, 2=Sud, 3=Ouest
                         for (int fx = 0; fx < gw; fx++) {
                             for (int fy = 0; fy < gh; fy++) {
                                 for (int fz = 0; fz < gd; fz++) {
                                     if (fx == 0 && fy == 0 && fz == 0) continue; // Skip base
-                                    long key = packPosition(baseWX + fx, baseWY + fy, baseWZ + fz);
+                                    // Pivoter l'offset (fx, fz) selon le yaw du bloc
+                                    int rotFx, rotFz;
+                                    switch (yaw) {
+                                        case 0: // Nord: pas de rotation
+                                            rotFx = fx; rotFz = fz; break;
+                                        case 1: // Est: 90° CW -> (fx,fz) -> (fz, -fx)
+                                            rotFx = fz; rotFz = -fx; break;
+                                        case 2: // Sud: 180° -> (fx,fz) -> (-fx, -fz)
+                                            rotFx = -fx; rotFz = -fz; break;
+                                        case 3: // Ouest: 270° CW -> (fx,fz) -> (-fz, fx)
+                                            rotFx = -fz; rotFz = fx; break;
+                                        default:
+                                            rotFx = fx; rotFz = fz; break;
+                                    }
+                                    long key = packPosition(baseWX + rotFx, baseWY + fy, baseWZ + rotFz);
                                     protectedFillerPositions.add(key);
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Protecting filler at (" + (baseWX + rotFx) + "," + (baseWY + fy) + "," + (baseWZ + rotFz) + ") for " + bt + " yaw=" + yaw + " offset=(" + fx + "," + fy + "," + fz + ")->(" + rotFx + "," + fy + "," + rotFz + ")");
+                                    }
                                 }
                             }
                         }
