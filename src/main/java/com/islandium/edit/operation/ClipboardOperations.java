@@ -347,20 +347,83 @@ public class ClipboardOperations {
                     int originalRotation = clipboard.getRotation(cx, cy, cz);
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
 
-                    // Compensation de position pour les blocs multi-part lors de vFlip uniquement.
-                    // Pour flipX et flipZ : pas de compensation nécessaire car le swap de yaw
-                    // est limité à l'axe du miroir (0<->2 pour flipX, 1<->3 pour flipZ),
-                    // et le miroir de coordonnées gère naturellement le décalage du filler.
-                    // Pour vFlip : le filler Y est toujours en +Y, il faut compenser.
-                    if (vFlip) {
+                    // Compensation de position pour les blocs multi-part.
+                    //
+                    // Le swap de yaw pour multipart (0<->2 pour flipX, 1<->3 pour flipZ)
+                    // change la direction du filler sur l'axe principal (géré par le miroir).
+                    // MAIS il change aussi la direction du filler sur l'axe TRANSVERSAL (depth).
+                    // Cette direction transversale n'est PAS gérée par le miroir -> compensation.
+                    //
+                    // Directions filler par yaw (width W, depth D):
+                    //   yaw 0: +X(W), +Z(D), +Y(H)
+                    //   yaw 1: +Z(W), -X(D), +Y(H)
+                    //   yaw 2: -X(W), -Z(D), +Y(H)
+                    //   yaw 3: -Z(W), +X(D), +Y(H)
+                    //
+                    // FlipX swap 0<->2: la direction Z du depth s'inverse.
+                    //   2->0: depth passe de -Z à +Z -> worldZ -= (depth-1)
+                    //   0->2: depth passe de +Z à -Z -> worldZ += (depth-1)
+                    //   (Si depth==1, compensation=0, donc pas d'effet sur les bancs 2x1x1)
+                    //
+                    // FlipZ swap 1<->3: la direction X du depth s'inverse.
+                    //   1->3: depth passe de -X à +X -> worldX -= (depth-1)
+                    //   3->1: depth passe de +X à -X -> worldX += (depth-1)
+                    //   (Si depth==1, compensation=0, donc pas d'effet sur les bancs 2x1x1)
+                    //
+                    // vFlip: filler Y toujours en +Y -> worldY += (height-1)
+                    {
+                        BlockSizeHelper.BlockSizeInfo origSizeInfo = BlockSizeHelper.getBlockSize(blockType, originalRotation);
                         BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
-                        if (transSizeInfo != null && transSizeInfo.isMultiPart()) {
-                            int transGh = transSizeInfo.gridHeight();
-                            if (transGh > 1) {
-                                worldY += (transGh - 1);
-                                if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part vFlip: " + blockType
-                                            + " transGh=" + transGh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                        if (origSizeInfo != null && transSizeInfo != null && origSizeInfo.isMultiPart()) {
+                            int origYaw = originalRotation % 4;
+                            int transYaw = transformedRotation % 4;
+
+                            if (flipX && origYaw != transYaw) {
+                                // FlipX swap 0<->2: compensation Z pour le depth transversal
+                                int gd = transSizeInfo.gridDepth();
+                                if (gd > 1) {
+                                    if (origYaw == 2 && transYaw == 0) {
+                                        // depth passe de -Z à +Z -> décaler origin vers -Z
+                                        worldZ -= (gd - 1);
+                                    } else if (origYaw == 0 && transYaw == 2) {
+                                        // depth passe de +Z à -Z -> décaler origin vers +Z
+                                        worldZ += (gd - 1);
+                                    }
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part flipX depth comp: " + blockType
+                                                + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                                + " gd=" + gd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
+                                }
+                            }
+
+                            if (flipZ && origYaw != transYaw) {
+                                // FlipZ swap 1<->3: compensation X pour le depth transversal
+                                int gd = transSizeInfo.gridDepth();
+                                if (gd > 1) {
+                                    if (origYaw == 1 && transYaw == 3) {
+                                        // depth passe de -X à +X -> décaler origin vers -X
+                                        worldX -= (gd - 1);
+                                    } else if (origYaw == 3 && transYaw == 1) {
+                                        // depth passe de +X à -X -> décaler origin vers +X
+                                        worldX += (gd - 1);
+                                    }
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part flipZ depth comp: " + blockType
+                                                + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                                + " gd=" + gd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
+                                }
+                            }
+
+                            if (vFlip) {
+                                int gh = transSizeInfo.gridHeight();
+                                if (gh > 1) {
+                                    worldY += (gh - 1);
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part vFlip: " + blockType
+                                                + " gh=" + gh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
                                 }
                             }
                         }

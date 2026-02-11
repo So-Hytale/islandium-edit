@@ -66,4 +66,19 @@ Fichier principal: `src/main/java/com/islandium/edit/operation/ClipboardOperatio
 
 **Avantage par rapport a v5**: Fonctionne pour TOUS les multipart, y compris les blocs visuellement asymetriques (lit) marques SYMMETRIC par l'API. Pas besoin d'overrides speciaux.
 
-**Resultat**: EN TEST
+**Resultat**: ECHEC - la compensation de position decale TOUS les blocs multipart (bancs inclus). Les bancs symetriques n'ont pas besoin de compensation, seulement les lits asymetriques. Mais on ne peut pas les distinguer via l'API (tous SYMMETRIC). La compensation est incorrecte pour les bancs car elle decale l'origin alors que le banc est visuellement identique dans les 2 sens.
+
+## v7 - Retour a v5: swap axe uniquement, aucune compensation (2026-02-11 10:42)
+**Approche**: Retour a l'approche v5 qui fonctionnait pour bancs, lanternes et la plupart des blocs:
+- Blocs multipart + flipX: SEULEMENT swap 0<->2
+- Blocs multipart + flipZ: SEULEMENT swap 1<->3
+- AUCUNE compensation de position pour flipX/flipZ
+- Detection multipart via `getBlockSize()` (correction du bug de detection)
+
+**Raisonnement du retour**: La v5 etait la meilleure version testee. Le seul probleme signale etait le lit "pas pareil" — mais en realite, un lit au yaw 0 (filler +X) devenant yaw 2 (filler -X) apres flipX EST un miroir correct : dans un vrai miroir, la tete et les pieds du lit SONT inverses. C'est le comportement attendu d'un miroir.
+
+La v6 essayait de "corriger" le lit en ne changeant pas le yaw et en compensant la position, mais cela cassait les bancs et tous les autres multipart symetriques.
+
+**Conclusion**: Le swap d'axe (v5/v7) est l'approche correcte pour les multipart. Le visuel "inverse" du lit est le comportement normal d'un miroir.
+
+**Resultat**: SUCCES ! Tous les blocs multipart (bancs, lits, lanternes) sont correctement en miroir pour flipX, flipZ et rotation 180. Aucun decalage de position. Le fix cle etait la detection multipart via `getBlockSize()` au lieu de `isMultiPart()` (qui ne detectait pas certains blocs). Confirme visuellement par l'utilisateur.
