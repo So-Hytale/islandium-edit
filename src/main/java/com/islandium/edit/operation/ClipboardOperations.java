@@ -473,14 +473,57 @@ public class ClipboardOperations {
                     blockTypes.add(blockType);
                     blockRotations.add(transformedRotation);
 
-                    // Log
-                    if (dbg != null && originalRotation != 0 && dbg.matchesBlockFilter(blockType)) {
-                        dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
-                                relX, relY, relZ,
-                                transformed[0], transformed[1], transformed[2],
-                                worldX, worldY, worldZ,
-                                blockType, originalRotation, transformedRotation);
+                    // Log DÉTAILLÉ pour CHAQUE multipart (pas seulement ceux avec rotation != 0)
+                    if (dbg != null) {
+                        int finalYaw = transformedRotation % 4;
+                        // Calculer la direction du filler selon le yaw final
+                        // yaw0: +X(W), +Z(D) | yaw1: +Z(W), -X(D) | yaw2: -X(W), -Z(D) | yaw3: -Z(W), +X(D)
+                        int cW = checkSize.gridWidth();
+                        int cD = checkSize.gridDepth();
+                        int cH = checkSize.gridHeight();
+                        String fillerDirs = "";
+                        // Width fillers
+                        for (int fw = 1; fw < cW; fw++) {
+                            int fx = worldX, fz = worldZ;
+                            switch (finalYaw) {
+                                case 0 -> fx += fw;
+                                case 1 -> fz += fw;
+                                case 2 -> fx -= fw;
+                                case 3 -> fz -= fw;
+                            }
+                            fillerDirs += " W" + fw + "=(" + fx + "," + worldY + "," + fz + ")";
+                        }
+                        // Depth fillers
+                        for (int fd = 1; fd < cD; fd++) {
+                            int fx = worldX, fz = worldZ;
+                            switch (finalYaw) {
+                                case 0 -> fz += fd;
+                                case 1 -> fx -= fd;
+                                case 2 -> fz -= fd;
+                                case 3 -> fx += fd;
+                            }
+                            fillerDirs += " D" + fd + "=(" + fx + "," + worldY + "," + fz + ")";
+                        }
+                        // Height fillers
+                        for (int fh = 1; fh < cH; fh++) {
+                            fillerDirs += " H" + fh + "=(" + worldX + "," + (worldY + fh) + "," + worldZ + ")";
+                        }
+                        dbg.log("PASTE", "  [MULTIPART-PLACE] " + blockType
+                                + " clip=(" + cx + "," + cy + "," + cz + ")"
+                                + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")"
+                                + " origYaw=" + (originalRotation % 4) + " finalYaw=" + finalYaw
+                                + " size=" + cW + "x" + cH + "x" + cD
+                                + " fillers:" + (fillerDirs.isEmpty() ? " NONE" : fillerDirs));
+
+                        // Vérifier collisions de fillers avec d'autres multipart déjà dans la liste
+                        for (int pi = airCount + nonMultiPartCount; pi < positions.size() - 1; pi++) {
+                            int[] prevPos = positions.get(pi);
+                            if (prevPos[0] == worldX && prevPos[1] == worldY && prevPos[2] == worldZ) {
+                                dbg.log("PASTE", "    !! COLLISION ORIGIN: même position que multipart #" + (pi - airCount - nonMultiPartCount));
+                            }
+                        }
                     }
+
                     debugBlockIndex++;
                 }
             }
@@ -996,6 +1039,10 @@ public class ClipboardOperations {
                                 continue;
                             }
 
+                            // Détection multipart pour log
+                            BlockSizeHelper.BlockSizeInfo placeSizeInfo = BlockSizeHelper.getBlockSize(blockType, 0);
+                            boolean isPlacingMultiPart = placeSizeInfo != null && placeSizeInfo.isMultiPart();
+
                             // Pour "air", utiliser breakBlock au lieu de setBlock
                             if ("air".equalsIgnoreCase(blockType)) {
                                 // Skip air -> air
@@ -1005,6 +1052,15 @@ public class ClipboardOperations {
                                 }
                                 world.breakBlock(pos[0], pos[1], pos[2], 0);
                             } else {
+                                // Log multipart AVANT placement
+                                DebugLogger dbgPlace = isPlacingMultiPart ? DebugLogger.get() : null;
+                                if (dbgPlace != null) {
+                                    dbgPlace.log("PASTE", "  [MP-EXEC] PRE " + blockType
+                                            + " pos=(" + pos[0] + "," + pos[1] + "," + pos[2] + ")"
+                                            + " rot=" + rotation
+                                            + " oldBlock=" + oldType + " oldRot=" + oldRotation);
+                                }
+
                                 // Utiliser le chunk pour placer le bloc avec rotation
                                 if (chunk != null && rotation != 0) {
                                     // Récupérer le BlockType depuis l'AssetMap
@@ -1012,11 +1068,31 @@ public class ClipboardOperations {
                                     if (bt != null) {
                                         // Placer d'abord le bloc normalement pour obtenir son ID
                                         world.setBlock(pos[0], pos[1], pos[2], blockType);
+
+                                        // Log multipart ENTRE les deux setBlock
+                                        if (dbgPlace != null) {
+                                            // Vérifier ce que Hytale a créé après le premier setBlock (yaw=0)
+                                            int afterFirstId = chunk.getBlock(pos[0], pos[1], pos[2]);
+                                            int afterFirstRot = chunk.getRotationIndex(pos[0], pos[1], pos[2]);
+                                            dbgPlace.log("PASTE", "  [MP-EXEC] AFTER-FIRST-SET " + blockType
+                                                    + " blockId=" + afterFirstId
+                                                    + " rot=" + afterFirstRot
+                                                    + " (will re-set with rot=" + rotation + ")");
+                                        }
+
                                         // Puis récupérer l'ID du bloc placé et le replacer avec rotation
                                         int blockId = chunk.getBlock(pos[0], pos[1], pos[2]);
                                         if (blockId > 0) {
                                             // setBlock(x, y, z, id, blockType, rotation, filler, settings)
                                             chunk.setBlock(pos[0], pos[1], pos[2], blockId, bt, rotation, 0, 0);
+
+                                            // Log multipart APRÈS le second setBlock
+                                            if (dbgPlace != null) {
+                                                int afterSecondRot = chunk.getRotationIndex(pos[0], pos[1], pos[2]);
+                                                dbgPlace.log("PASTE", "  [MP-EXEC] AFTER-SECOND-SET " + blockType
+                                                        + " rot=" + afterSecondRot
+                                                        + " (expected " + rotation + ")");
+                                            }
                                         }
                                     } else {
                                         // Fallback si le BlockType n'est pas trouvé
@@ -1025,6 +1101,13 @@ public class ClipboardOperations {
                                 } else {
                                     // Pas de rotation ou chunk non chargé, utiliser setBlock normal
                                     world.setBlock(pos[0], pos[1], pos[2], blockType);
+
+                                    // Log multipart placé à rotation 0
+                                    if (dbgPlace != null) {
+                                        dbgPlace.log("PASTE", "  [MP-EXEC] SET-NO-ROT " + blockType
+                                                + " pos=(" + pos[0] + "," + pos[1] + "," + pos[2] + ")"
+                                                + " (rotation=0, chunk=" + (chunk != null) + ")");
+                                    }
                                 }
                             }
                             action.addChange(worldId, pos[0], pos[1], pos[2], oldType, blockType,

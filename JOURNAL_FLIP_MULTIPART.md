@@ -197,4 +197,30 @@ FlipZ:
 - Banc (cW=2, cD=1): flipX = swap 0<->2 only, flipZ = swap 1<->3 only → COMME V7 (qui marchait pour les bancs)
 - Lit (cW=2, cD=3): swap complet 0<->2 + 1<->3 + compensations → COMME V11 (qui marchait pour les lits)
 
+**Resultat**: flipX OK, rot180 OK. FlipZ = 2 bancs manquants (meme probleme persistant depuis v7).
+
+**Analyse du probleme persistant "2 bancs manquants en flipZ"** :
+Tous les 5 bancs sont bien dans les logs de paste (0 failures). Le probleme est une COLLISION DE FILLERS.
+
+**Cause racine** : Le paste itere en ordre cx=0→11, cy=0→9, cz=0→11. Les blocs solides sont tous dans la meme passe (air d'abord, solides ensuite). Quand un banc est place avec yaw=3 (filler en -Z), le filler est cree a Z-1. Mais un bloc de sol (`Soil_Clay_Smooth_Lime`) a une position de clipboard mappee a cette position de filler est paste APRES le banc (car cx ou cz plus grand). Le `world.setBlock()` du sol ECRASE le filler du banc, et Hytale detruit automatiquement le banc entier quand son filler est ecrase.
+
+Exemple concret :
+- 5eme banc (yaw=0) au clipboard (7,1,6) → world (-226,270,-191), filler a (-225,270,-191)
+- Un bloc de sol au clipboard (8,1,6) → world (-225,270,-191) = meme position que le filler !
+- Le sol est paste APRES le banc (cx=8 > cx=7), ecrase le filler → banc supprime.
+
+## v13 - Paste en 3 passes: air → solides → multipart (2026-02-11 ~12:30)
+**Approche**: Systeme de paste a 3 passes au lieu de 2 :
+1. **Air** (passe 1) - nettoie la zone
+2. **Solides non-multipart** (passe 2) - sol, murs, decorations normales
+3. **Multipart** (passe 3) - bancs, lits, lanternes EN DERNIER
+
+En placant les multipart en dernier, leurs fillers auto-crees par Hytale ne peuvent plus etre ecrases par d'autres blocs de la meme operation de paste.
+
+**Detection multipart**: Utilise `BlockSizeHelper.getBlockSize(blockType, 0)` pour detecter si un bloc est multipart. Le test `checkSize.isMultiPart()` utilise `protrudesUnitBox || width > 1 || height > 1 || depth > 1`.
+
+**Compensation multipart**: Deplacee de la passe 2 (ou elle etait du code mort) vers la passe 3 uniquement.
+
+**Log ameliore**: Le message de total indique maintenant `(air: N, solids: N, multipart: N)`.
+
 **Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.
