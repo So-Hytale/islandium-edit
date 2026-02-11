@@ -280,11 +280,14 @@ public class ClipboardOperations {
         int clipHeight = clipboard.getHeight();
         int clipDepth = clipboard.getDepth();
 
-        // === Construire les listes de blocs en 2 passes : AIR d'abord, SOLIDES ensuite ===
-        // L'air est placé en premier pour nettoyer la zone, puis les blocs solides sont placés.
-        // Cela évite que l'air du clipboard écrase les fillers auto-créés par Hytale
-        // lorsque des blocs multi-part (lanternes, bancs...) sont placés.
-        // Pas besoin de prédire les positions filler : elles n'existent pas encore quand l'air est posé.
+        // === Construire les listes de blocs en 3 passes : AIR, SOLIDES, MULTIPART ===
+        // 1) Air d'abord pour nettoyer la zone
+        // 2) Solides non-multipart (sol, murs, etc.) ensuite
+        // 3) Multipart en DERNIER (bancs, lits, lanternes...)
+        //
+        // L'ordre est crucial : si un bloc de sol est placé APRÈS un banc,
+        // il écrase le filler auto-créé par Hytale, ce qui détruit le banc entier.
+        // En plaçant les multipart en dernier, leurs fillers ne sont jamais écrasés.
 
         // Première passe : collecter l'air
         for (int cx = 0; cx < clipWidth; cx++) {
@@ -317,7 +320,7 @@ public class ClipboardOperations {
 
         int airCount = positions.size();
 
-        // Deuxième passe : collecter les blocs solides
+        // Deuxième passe : collecter les blocs solides NON-multipart
         for (int cx = 0; cx < clipWidth; cx++) {
             for (int cy = 0; cy < clipHeight; cy++) {
                 for (int cz = 0; cz < clipDepth; cz++) {
@@ -325,6 +328,11 @@ public class ClipboardOperations {
                     boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
 
                     if (isAir) continue;
+
+                    // Vérifier si c'est un bloc multipart (sera traité dans la passe 3)
+                    BlockSizeHelper.BlockSizeInfo checkSize = BlockSizeHelper.getBlockSize(blockType, 0);
+                    boolean isMultiPartBlock = checkSize != null && checkSize.isMultiPart();
+                    if (isMultiPartBlock) continue; // Reporté à la passe 3
 
                     double relX = offsetX + cx;
                     double relY = offsetY + cy;
@@ -347,49 +355,80 @@ public class ClipboardOperations {
                     int originalRotation = clipboard.getRotation(cx, cy, cz);
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
 
-                    // Compensation de position pour les blocs multi-part.
-                    //
-                    // Le swap COMPLET (0<->2 + 1<->3) inverse TOUTES les directions du filler.
-                    // Le miroir ne gère qu'un seul axe (X pour flipX, Z pour flipZ).
-                    // L'axe NON-miroir qui s'inverse est un effet secondaire → compensation.
-                    //
-                    // Directions filler par yaw (conceptuel au yaw 0: W=width, D=depth):
-                    //   yaw 0: +X(W), +Z(D), +Y(H)
-                    //   yaw 1: +Z(W), -X(D), +Y(H)
-                    //   yaw 2: -X(W), -Z(D), +Y(H)
-                    //   yaw 3: -Z(W), +X(D), +Y(H)
-                    //
-                    // FlipX : miroir X gère l'inversion X. L'inversion Z est l'effet secondaire.
-                    //   swap 0<->2: Z(D) s'inverse -> compenser Z ± (conceptDepth-1)
-                    //   swap 1<->3: Z(W) s'inverse -> compenser Z ± (conceptWidth-1)
-                    //
-                    // FlipZ : miroir Z gère l'inversion Z. L'inversion X est l'effet secondaire.
-                    //   swap 0<->2: X(W) s'inverse -> compenser X ± (conceptWidth-1)
-                    //   swap 1<->3: X(D) s'inverse -> compenser X ± (conceptDepth-1)
-                    //
-                    // vFlip: filler Y toujours en +Y -> worldY += (height-1)
+                    // Pas de compensation multipart ici : les multipart sont dans la passe 3
+
+                    positions.add(new int[]{worldX, worldY, worldZ});
+                    blockTypes.add(blockType);
+                    blockRotations.add(transformedRotation);
+
+                    // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
+                    if (dbg != null && originalRotation != 0 && dbg.matchesBlockFilter(blockType)) {
+                        dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
+                                relX, relY, relZ,
+                                transformed[0], transformed[1], transformed[2],
+                                worldX, worldY, worldZ,
+                                blockType, originalRotation, transformedRotation);
+                    }
+                    debugBlockIndex++;
+                }
+            }
+        }
+
+        int nonMultiPartCount = positions.size() - airCount;
+
+        // Troisième passe : collecter les blocs multipart
+        for (int cx = 0; cx < clipWidth; cx++) {
+            for (int cy = 0; cy < clipHeight; cy++) {
+                for (int cz = 0; cz < clipDepth; cz++) {
+                    String blockType = clipboard.getBlock(cx, cy, cz);
+                    boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
+
+                    if (isAir) continue;
+
+                    // Seuls les multipart sont dans cette passe
+                    BlockSizeHelper.BlockSizeInfo checkSize = BlockSizeHelper.getBlockSize(blockType, 0);
+                    boolean isMultiPartBlock = checkSize != null && checkSize.isMultiPart();
+                    if (!isMultiPartBlock) continue;
+
+                    double relX = offsetX + cx;
+                    double relY = offsetY + cy;
+                    double relZ = offsetZ + cz;
+                    double[] transformed = transform.apply(relX, relY, relZ);
+                    for (int i = 0; i < 3; i++) {
+                        double rounded = Math.round(transformed[i]);
+                        if (Math.abs(transformed[i] - rounded) < 1e-8) transformed[i] = rounded;
+                    }
+                    int worldX = playerX + (int) Math.floor(transformed[0]);
+                    int worldY = playerY + (int) Math.floor(transformed[1]);
+                    int worldZ = playerZ + (int) Math.floor(transformed[2]);
+
+                    // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
+                    if (transform.isFlipX() ^ transform.isFlipZ()) {
+                        blockType = transformBlockName(blockType);
+                    }
+
+                    // Récupérer et transformer la rotation
+                    int originalRotation = clipboard.getRotation(cx, cy, cz);
+                    int transformedRotation = transformRotation(originalRotation, transform, blockType);
+
+                    // Compensation de position pour les blocs multi-part (même logique que passe 2)
                     {
                         BlockSizeHelper.BlockSizeInfo baseSizeInfo = BlockSizeHelper.getBlockSize(blockType, 0);
                         if (baseSizeInfo != null && baseSizeInfo.isMultiPart()) {
                             int origYaw = originalRotation % 4;
                             int transYaw = transformedRotation % 4;
-                            int cW = baseSizeInfo.gridWidth();   // conceptual width
-                            int cD = baseSizeInfo.gridDepth();   // conceptual depth
-                            int cH = baseSizeInfo.gridHeight();  // conceptual height
+                            int cW = baseSizeInfo.gridWidth();
+                            int cD = baseSizeInfo.gridDepth();
+                            int cH = baseSizeInfo.gridHeight();
 
                             if (flipX && origYaw != transYaw) {
-                                // FlipX: compenser l'inversion Z (effet secondaire)
                                 if (origYaw == 0 && transYaw == 2) {
-                                    // D: +Z → -Z -> compenser Z += (cD-1)
                                     if (cD > 1) worldZ += (cD - 1);
                                 } else if (origYaw == 2 && transYaw == 0) {
-                                    // D: -Z → +Z -> compenser Z -= (cD-1)
                                     if (cD > 1) worldZ -= (cD - 1);
                                 } else if (origYaw == 1 && transYaw == 3) {
-                                    // W: +Z → -Z -> compenser Z += (cW-1)
                                     if (cW > 1) worldZ += (cW - 1);
                                 } else if (origYaw == 3 && transYaw == 1) {
-                                    // W: -Z → +Z -> compenser Z -= (cW-1)
                                     if (cW > 1) worldZ -= (cW - 1);
                                 }
                                 if (dbg != null) {
@@ -401,18 +440,13 @@ public class ClipboardOperations {
                             }
 
                             if (flipZ && origYaw != transYaw) {
-                                // FlipZ: compenser l'inversion X (effet secondaire)
                                 if (origYaw == 0 && transYaw == 2) {
-                                    // W: +X → -X -> compenser X += (cW-1)
                                     if (cW > 1) worldX += (cW - 1);
                                 } else if (origYaw == 2 && transYaw == 0) {
-                                    // W: -X → +X -> compenser X -= (cW-1)
                                     if (cW > 1) worldX -= (cW - 1);
                                 } else if (origYaw == 1 && transYaw == 3) {
-                                    // D: -X → +X -> compenser X -= (cD-1)
                                     if (cD > 1) worldX -= (cD - 1);
                                 } else if (origYaw == 3 && transYaw == 1) {
-                                    // D: +X → -X -> compenser X += (cD-1)
                                     if (cD > 1) worldX += (cD - 1);
                                 }
                                 if (dbg != null) {
@@ -439,7 +473,7 @@ public class ClipboardOperations {
                     blockTypes.add(blockType);
                     blockRotations.add(transformedRotation);
 
-                    // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
+                    // Log
                     if (dbg != null && originalRotation != 0 && dbg.matchesBlockFilter(blockType)) {
                         dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
                                 relX, relY, relZ,
@@ -452,8 +486,13 @@ public class ClipboardOperations {
             }
         }
 
+        int multiPartCount = positions.size() - airCount - nonMultiPartCount;
+
         if (dbg != null) {
-            dbg.log("PASTE", "Total blocks to paste: " + positions.size() + " (air first: " + airCount + ", solids: " + (positions.size() - airCount) + ")");
+            dbg.log("PASTE", "Total blocks to paste: " + positions.size()
+                    + " (air: " + airCount
+                    + ", solids: " + nonMultiPartCount
+                    + ", multipart: " + multiPartCount + ")");
         }
 
         CompletableFuture<BlockOperations.OperationResult> future = new CompletableFuture<>();

@@ -175,4 +175,26 @@ FlipZ (miroir Z gere l'inversion Z, compenser l'inversion X):
 - FlipZ yaw 2→0: `worldX -= (2-1) = -1` ← corrige le decalage X
 - FlipX yaw 2→0: `worldZ -= (3-1) = -2` ← corrige le decalage Z
 
+**Resultat**: PRESQUE - Lits correctement en miroir ! Mais 3 problemes restants :
+1. Banc yaw=0 dans flipZ swappe en yaw=2 + comp X += 1 → deporte (le banc est SYMMETRIC, pas besoin de swap 0<->2)
+2. 2 bancs manquants dans flipZ (meme probleme que v7)
+3. Bancs flipX au yaw=1 swappes en yaw=3 + comp Z += 1 → potentiellement deporte aussi
+
+**Analyse**: Le swap 0<->2 dans flipZ et le swap 1<->3 dans flipX ne sont necessaires que pour les blocs avec conceptDepth > 1. Pour depth=1, l'inversion de la direction du depth n'a aucun effet (1 seul bloc). Donc le swap secondaire est inutile et la compensation deplace le bloc.
+
+## v12 - Swap conditionnel: secondaire seulement si cD > 1 (2026-02-11 ~12:10)
+**Approche**: Swap CONDITIONNEL pour les multipart :
+
+FlipX:
+- swap 0<->2 TOUJOURS (width en X = axe miroir)
+- swap 1<->3 SEULEMENT si conceptDepth > 1
+
+FlipZ:
+- swap 1<->3 TOUJOURS (width en Z = axe miroir)
+- swap 0<->2 SEULEMENT si conceptDepth > 1
+
+**Effet par bloc**:
+- Banc (cW=2, cD=1): flipX = swap 0<->2 only, flipZ = swap 1<->3 only → COMME V7 (qui marchait pour les bancs)
+- Lit (cW=2, cD=3): swap complet 0<->2 + 1<->3 + compensations → COMME V11 (qui marchait pour les lits)
+
 **Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.
