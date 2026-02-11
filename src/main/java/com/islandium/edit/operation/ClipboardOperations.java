@@ -787,6 +787,18 @@ public class ClipboardOperations {
         BlockSizeHelper.BlockSizeInfo sizeInfo = BlockSizeHelper.getBlockSize(blockType, rotationIndex);
         boolean isMultiPart = sizeInfo != null && sizeInfo.isMultiPart();
 
+        // Log multipart detection
+        if (isMultiPart && (flipX || flipZ)) {
+            BlockSizeHelper.BlockSizeInfo baseSizeInfo = BlockSizeHelper.getBlockSize(blockType, 0);
+            DebugLogger dbg0 = DebugLogger.get();
+            if (dbg0 != null && baseSizeInfo != null) {
+                dbg0.log("ROT", "  [MULTIPART] " + blockType + " yaw=" + yaw
+                        + " cW=" + baseSizeInfo.gridWidth() + " cD=" + baseSizeInfo.gridDepth()
+                        + " cH=" + baseSizeInfo.gridHeight()
+                        + " flipX=" + flipX + " flipZ=" + flipZ);
+            }
+        }
+
         // === FlipX (miroir est/ouest) ===
         // Pour les blocs multi-part : swap COMPLET 0<->2 ET 1<->3.
         //   Un miroir X inverse la direction X. Pour les multipart, cela affecte :

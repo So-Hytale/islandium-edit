@@ -133,4 +133,46 @@ Le probleme de v8 etait que `gridDepth(yaw=3)` pour un banc retournait 2 (le wid
 2. Hytale refuse de creer le filler si un bloc existe deja a cette position
 3. Probleme d'ordre d'iteration dans la 2eme passe (solides)
 
+**Resultat**: ECHEC - Meme probleme que v7. Les lits au yaw 0/2 ne sont pas swappes lors du flipZ (car multipart flipZ ne faisait que 1<->3). Le lit garde yaw=2 apres flipZ → filler en -Z au lieu de +Z.
+
+**Analyse fondamentale (revision)**: L'approche "swap axe uniquement" (v5/v7/v10) est INCOMPLETE. Un miroir inverse un axe du monde. Pour les multipart, TOUTES les directions du filler qui passent par cet axe doivent etre inversees. Un yaw encode DEUX directions (width ET depth). Le swap d'un seul couple (ex: 0<->2 pour flipX) n'inverse que les yaw dont la width est sur cet axe, mais ignore les yaw dont le DEPTH est sur cet axe.
+
+Analyse par yaw pour comprendre quel swap est necessaire :
+```
+Yaw | W    | D    | FlipX need      | FlipZ need
+ 0  | +X   | +Z   | W=-X → yaw 2   | D=-Z → yaw 2 (W change aussi!)
+ 1  | +Z   | -X   | D=+X → yaw 3   | W=-Z → yaw 3 (D change aussi!)
+ 2  | -X   | -Z   | W=+X → yaw 0   | D=+Z → yaw 0 (W change aussi!)
+ 3  | -Z   | +X   | D=-X → yaw 1   | W=+Z → yaw 1 (D change aussi!)
+```
+
+Resultat : pour FlipX ET FlipZ, le swap est TOUJOURS 0<->2 ET 1<->3 (swap complet). Mais le swap complet inverse aussi la dimension NON-miroir → besoin de COMPENSATION.
+
+## v11 - Swap complet + compensation effet secondaire (2026-02-11 ~11:50)
+**Approche**: Pour les multipart, swap COMPLET (0<->2 ET 1<->3) pour flipX et flipZ. Plus compensation de position pour l'axe NON-miroir qui s'inverse comme effet secondaire.
+
+**Swap complet**: Identique pour flipX et flipZ: `0<->2, 1<->3`. C'est comme une rotation 180° du yaw. La difference entre flipX et flipZ est dans la COMPENSATION.
+
+**Compensations**: Utilise les dimensions conceptuelles au yaw=0 (cW=width, cD=depth).
+
+FlipX (miroir X gere l'inversion X, compenser l'inversion Z):
+- swap 0→2: D +Z→-Z → `worldZ += (cD-1)`
+- swap 2→0: D -Z→+Z → `worldZ -= (cD-1)`
+- swap 1→3: W +Z→-Z → `worldZ += (cW-1)`
+- swap 3→1: W -Z→+Z → `worldZ -= (cW-1)`
+
+FlipZ (miroir Z gere l'inversion Z, compenser l'inversion X):
+- swap 0→2: W +X→-X → `worldX += (cW-1)`
+- swap 2→0: W -X→+X → `worldX -= (cW-1)`
+- swap 1→3: D -X→+X → `worldX -= (cD-1)`
+- swap 3→1: D +X→-X → `worldX += (cD-1)`
+
+**Verification banc (2x1x1, cW=2, cD=1)**:
+- FlipX yaw 1→3: `worldZ += (2-1) = +1` ← NOUVEAU par rapport a v7
+- FlipZ yaw 1→3: `worldX -= (1-1) = 0` ← pas d'effet (comme v7)
+
+**Verification lit (2x2x3, cW=2, cD=3)**:
+- FlipZ yaw 2→0: `worldX -= (2-1) = -1` ← corrige le decalage X
+- FlipX yaw 2→0: `worldZ -= (3-1) = -2` ← corrige le decalage Z
+
 **Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.
