@@ -347,24 +347,48 @@ public class ClipboardOperations {
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
 
                     // Correction de position pour les blocs multi-part lors des flips.
-                    // Quand on flip un bloc 2x1x1 sur l'axe X sans que le yaw change (ex: yaw=2 Sud),
-                    // le filler reste du même côté relatif au bloc, mais dans le monde miroir il devrait
-                    // être de l'autre côté. On compense en décalant la position du bloc origin.
+                    // Quand Hytale place un bloc multi-part (ex: banc 2x1x1), il crée automatiquement
+                    // le filler dans une direction relative au bloc origin, déterminée par le yaw.
+                    // Un flip miroir inverse les coordonnées monde mais PAS la direction interne du filler.
+                    // Il faut compenser en décalant la position du bloc origin.
+                    //
+                    // La direction du filler dépend du yaw TRANSFORMÉ :
+                    //   yaw=0 -> filler en +X, yaw=2 -> filler en -X
+                    //   yaw=1 -> filler en +Z, yaw=3 -> filler en -Z
+                    // Après un flipX, un filler qui allait en +X devrait aller en -X, et vice versa.
+                    // Si le yaw transformé place le filler en +X, on décale l'origin en -(gw-1).
+                    // Si le yaw transformé place le filler en -X, on décale l'origin en +(gw-1).
                     if (flipX || flipZ) {
-                        BlockSizeHelper.BlockSizeInfo sizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
-                        if (sizeInfo != null && sizeInfo.isMultiPart()) {
-                            int gw = sizeInfo.gridWidth();
-                            int gd = sizeInfo.gridDepth();
-                            if (flipX && gw > 1) {
-                                worldX -= (gw - 1);
+                        BlockSizeHelper.BlockSizeInfo origSizeInfo = BlockSizeHelper.getBlockSize(blockType, originalRotation);
+                        BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
+                        if (origSizeInfo != null && transSizeInfo != null && origSizeInfo.isMultiPart()) {
+                            int origGw = origSizeInfo.gridWidth();
+                            int origGd = origSizeInfo.gridDepth();
+                            int transGw = transSizeInfo.gridWidth();
+                            int transGd = transSizeInfo.gridDepth();
+                            int transYaw = transformedRotation % 4;
+                            if (flipX && transGw > 1 && origGw > 1) {
+                                // yaw=0 -> filler en +X -> décaler origin en -X
+                                // yaw=2 -> filler en -X -> décaler origin en +X
+                                if (transYaw == 0) {
+                                    worldX -= (transGw - 1);
+                                } else if (transYaw == 2) {
+                                    worldX += (transGw - 1);
+                                }
                                 if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part flipX offset: " + blockType + " gridW=" + gw + " -> worldX-=" + (gw - 1) + " => (" + worldX + "," + worldY + "," + worldZ + ")");
+                                    dbg.log("PASTE", "  Multi-part flipX: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGw=" + origGw + " transGw=" + transGw + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
-                            if (flipZ && gd > 1) {
-                                worldZ -= (gd - 1);
+                            if (flipZ && transGd > 1 && origGd > 1) {
+                                // yaw=1 -> filler en +Z -> décaler origin en -Z
+                                // yaw=3 -> filler en -Z -> décaler origin en +Z
+                                if (transYaw == 1) {
+                                    worldZ -= (transGd - 1);
+                                } else if (transYaw == 3) {
+                                    worldZ += (transGd - 1);
+                                }
                                 if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part flipZ offset: " + blockType + " gridD=" + gd + " -> worldZ-=" + (gd - 1) + " => (" + worldX + "," + worldY + "," + worldZ + ")");
+                                    dbg.log("PASTE", "  Multi-part flipZ: " + blockType + " origYaw=" + (originalRotation % 4) + " transYaw=" + transYaw + " origGd=" + origGd + " transGd=" + transGd + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                 }
                             }
                         }
