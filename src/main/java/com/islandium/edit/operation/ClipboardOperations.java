@@ -18,8 +18,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -277,6 +279,57 @@ public class ClipboardOperations {
         int clipHeight = clipboard.getHeight();
         int clipDepth = clipboard.getDepth();
 
+        // === Phase 1: Collecter les positions filler des blocs multi-part ===
+        // Pour éviter que le paste ne détruise les fillers auto-créés par Hytale
+        // en plaçant de l'air à leurs positions.
+        Set<Long> protectedFillerPositions = new HashSet<>();
+        if (!skipAir) {
+            for (int cx = 0; cx < clipWidth; cx++) {
+                for (int cy = 0; cy < clipHeight; cy++) {
+                    for (int cz = 0; cz < clipDepth; cz++) {
+                        String bt = clipboard.getBlock(cx, cy, cz);
+                        if (bt == null || "air".equalsIgnoreCase(bt)) continue;
+
+                        int rot = clipboard.getRotation(cx, cy, cz);
+                        int transformedRot = transformRotation(rot, transform, bt);
+                        BlockSizeHelper.BlockSizeInfo sizeInfo = BlockSizeHelper.getBlockSize(bt, transformedRot);
+                        if (sizeInfo == null || !sizeInfo.isMultiPart()) continue;
+
+                        // Calculer la position monde transformée de ce bloc
+                        double relX = offsetX + cx;
+                        double relY = offsetY + cy;
+                        double relZ = offsetZ + cz;
+                        double[] tf = transform.apply(relX, relY, relZ);
+                        for (int i = 0; i < 3; i++) {
+                            double rounded = Math.round(tf[i]);
+                            if (Math.abs(tf[i] - rounded) < 1e-8) tf[i] = rounded;
+                        }
+                        int baseWX = playerX + (int) Math.floor(tf[0]);
+                        int baseWY = playerY + (int) Math.floor(tf[1]);
+                        int baseWZ = playerZ + (int) Math.floor(tf[2]);
+
+                        // Marquer toutes les positions filler (hors base) comme protégées
+                        int gw = sizeInfo.gridWidth();
+                        int gh = sizeInfo.gridHeight();
+                        int gd = sizeInfo.gridDepth();
+                        for (int fx = 0; fx < gw; fx++) {
+                            for (int fy = 0; fy < gh; fy++) {
+                                for (int fz = 0; fz < gd; fz++) {
+                                    if (fx == 0 && fy == 0 && fz == 0) continue; // Skip base
+                                    long key = packPosition(baseWX + fx, baseWY + fy, baseWZ + fz);
+                                    protectedFillerPositions.add(key);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (dbg != null && !protectedFillerPositions.isEmpty()) {
+                dbg.log("PASTE", "Protected filler positions (multi-part): " + protectedFillerPositions.size());
+            }
+        }
+
+        // === Phase 2: Construire la liste des blocs à placer ===
         for (int cx = 0; cx < clipWidth; cx++) {
             for (int cy = 0; cy < clipHeight; cy++) {
                 for (int cz = 0; cz < clipDepth; cz++) {
@@ -313,6 +366,17 @@ public class ClipboardOperations {
                     int worldX = playerX + (int) Math.floor(transformed[0]);
                     int worldY = playerY + (int) Math.floor(transformed[1]);
                     int worldZ = playerZ + (int) Math.floor(transformed[2]);
+
+                    // Ne pas placer d'air sur les positions filler protégées (blocs multi-part)
+                    if (isAir && !protectedFillerPositions.isEmpty()) {
+                        long posKey = packPosition(worldX, worldY, worldZ);
+                        if (protectedFillerPositions.contains(posKey)) {
+                            if (dbg != null) {
+                                dbg.log("PASTE", "Skipping air at protected filler position (" + worldX + "," + worldY + "," + worldZ + ")");
+                            }
+                            continue;
+                        }
+                    }
 
                     positions.add(new int[]{worldX, worldY, worldZ});
 
@@ -890,6 +954,13 @@ public class ClipboardOperations {
                 }
             }
         });
+    }
+
+    /**
+     * Encode une position (x, y, z) en un long unique pour utilisation dans un HashSet.
+     */
+    private static long packPosition(int x, int y, int z) {
+        return ((long) x & 0x3FFFFFFL) | (((long) y & 0xFFFL) << 26) | (((long) z & 0x3FFFFFFL) << 38);
     }
 
     @Nullable
