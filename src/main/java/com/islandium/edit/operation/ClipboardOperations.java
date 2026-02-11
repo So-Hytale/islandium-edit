@@ -271,6 +271,8 @@ public class ClipboardOperations {
         int offsetZ = clipboard.getOffsetZ();
 
         int debugBlockIndex = 0;
+        boolean flipX = transform.isFlipX();
+        boolean flipZ = transform.isFlipZ();
 
         // Itérer sur tout le volume du clipboard
         int clipWidth = clipboard.getWidth();
@@ -335,17 +337,41 @@ public class ClipboardOperations {
                     int worldY = playerY + (int) Math.floor(transformed[1]);
                     int worldZ = playerZ + (int) Math.floor(transformed[2]);
 
-                    positions.add(new int[]{worldX, worldY, worldZ});
-
                     // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
                     if (transform.isFlipX() ^ transform.isFlipZ()) {
                         blockType = transformBlockName(blockType);
                     }
-                    blockTypes.add(blockType);
 
                     // Récupérer et transformer la rotation
                     int originalRotation = clipboard.getRotation(cx, cy, cz);
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
+
+                    // Correction de position pour les blocs multi-part lors des flips.
+                    // Quand on flip un bloc 2x1x1 sur l'axe X sans que le yaw change (ex: yaw=2 Sud),
+                    // le filler reste du même côté relatif au bloc, mais dans le monde miroir il devrait
+                    // être de l'autre côté. On compense en décalant la position du bloc origin.
+                    if (flipX || flipZ) {
+                        BlockSizeHelper.BlockSizeInfo sizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
+                        if (sizeInfo != null && sizeInfo.isMultiPart()) {
+                            int gw = sizeInfo.gridWidth();
+                            int gd = sizeInfo.gridDepth();
+                            if (flipX && gw > 1) {
+                                worldX -= (gw - 1);
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part flipX offset: " + blockType + " gridW=" + gw + " -> worldX-=" + (gw - 1) + " => (" + worldX + "," + worldY + "," + worldZ + ")");
+                                }
+                            }
+                            if (flipZ && gd > 1) {
+                                worldZ -= (gd - 1);
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part flipZ offset: " + blockType + " gridD=" + gd + " -> worldZ-=" + (gd - 1) + " => (" + worldX + "," + worldY + "," + worldZ + ")");
+                                }
+                            }
+                        }
+                    }
+
+                    positions.add(new int[]{worldX, worldY, worldZ});
+                    blockTypes.add(blockType);
                     blockRotations.add(transformedRotation);
 
                     // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
