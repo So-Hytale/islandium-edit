@@ -119,4 +119,18 @@ Pour un lit 2x2x3: `gridDepth(yaw=0) = 3` → compensation = 2 → decalage corr
 
 Le probleme de v8 etait que `gridDepth(yaw=3)` pour un banc retournait 2 (le width tourne en Z).
 
+**Resultat**: ECHEC - Bancs OK (conceptDepth=1, pas de compensation) mais lits ont une rotation inversee sur les 3 pastes (flipX, rot180, flipZ). La compensation transversale decale les lits de leur position correcte.
+
+**Analyse fondamentale**: La compensation transversale est FAUSSE. Quand on swap yaw 0→2 (flipX), le filler change de direction en Z (de +Z a -Z). Mais dans un miroir X, l'axe Z n'est PAS affecte → le filler en Z inversee EST le comportement correct du miroir. L'origin est deja a la bonne position (transformee par le miroir du clipboard). Compenser en Z decale le lit de sa position miroir correcte.
+
+## v10 - Retour v7 : AUCUNE compensation flipX/flipZ, investigation bancs flipZ (2026-02-11 ~11:30)
+**Approche**: Suppression totale de la compensation de position pour flipX et flipZ. Retour a l'approche v7 qui etait quasi-parfaite. Seul vFlip garde sa compensation (filler Y toujours en +Y).
+
+**Raisonnement**: Les v8 et v9 tentaient de compenser le changement de direction transversale du filler, mais c'etait une erreur logique. Le miroir transforme les coordonnees → le yaw swap change la direction du filler → le filler s'etend dans la direction miroir = CORRECT. Pas besoin de compenser.
+
+**Probleme restant de v7**: 2 bancs manquants dans le flipZ. Ce n'est PAS un probleme de compensation (les bancs 2x1x1 ont depth=1, compensation=0). Hypotheses:
+1. Collision filler : un bloc solide pose APRES le banc ecrase son filler
+2. Hytale refuse de creer le filler si un bloc existe deja a cette position
+3. Probleme d'ordre d'iteration dans la 2eme passe (solides)
+
 **Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.

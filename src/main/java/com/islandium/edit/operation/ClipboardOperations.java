@@ -349,25 +349,86 @@ public class ClipboardOperations {
 
                     // Compensation de position pour les blocs multi-part.
                     //
-                    // PAS de compensation pour flipX/flipZ :
-                    // Le swap de yaw (0<->2 pour flipX, 1<->3 pour flipZ) change la direction
-                    // du filler sur TOUS les axes (width, depth). C'est le comportement attendu
-                    // d'un miroir : le filler s'étend dans la direction miroir du filler original.
-                    // La position de l'origin est déjà correctement transformée par le miroir
-                    // des coordonnées du clipboard.
+                    // Le swap COMPLET (0<->2 + 1<->3) inverse TOUTES les directions du filler.
+                    // Le miroir ne gère qu'un seul axe (X pour flipX, Z pour flipZ).
+                    // L'axe NON-miroir qui s'inverse est un effet secondaire → compensation.
                     //
-                    // Seul vFlip nécessite une compensation car le filler Y va toujours en +Y
-                    // (pas de flip du filler vertical).
+                    // Directions filler par yaw (conceptuel au yaw 0: W=width, D=depth):
+                    //   yaw 0: +X(W), +Z(D), +Y(H)
+                    //   yaw 1: +Z(W), -X(D), +Y(H)
+                    //   yaw 2: -X(W), -Z(D), +Y(H)
+                    //   yaw 3: -Z(W), +X(D), +Y(H)
+                    //
+                    // FlipX : miroir X gère l'inversion X. L'inversion Z est l'effet secondaire.
+                    //   swap 0<->2: Z(D) s'inverse -> compenser Z ± (conceptDepth-1)
+                    //   swap 1<->3: Z(W) s'inverse -> compenser Z ± (conceptWidth-1)
+                    //
+                    // FlipZ : miroir Z gère l'inversion Z. L'inversion X est l'effet secondaire.
+                    //   swap 0<->2: X(W) s'inverse -> compenser X ± (conceptWidth-1)
+                    //   swap 1<->3: X(D) s'inverse -> compenser X ± (conceptDepth-1)
+                    //
+                    // vFlip: filler Y toujours en +Y -> worldY += (height-1)
                     {
-                        if (vFlip) {
-                            BlockSizeHelper.BlockSizeInfo baseSizeInfo = BlockSizeHelper.getBlockSize(blockType, 0);
-                            if (baseSizeInfo != null && baseSizeInfo.isMultiPart()) {
-                                int conceptHeight = baseSizeInfo.gridHeight();
-                                if (conceptHeight > 1) {
-                                    worldY += (conceptHeight - 1);
+                        BlockSizeHelper.BlockSizeInfo baseSizeInfo = BlockSizeHelper.getBlockSize(blockType, 0);
+                        if (baseSizeInfo != null && baseSizeInfo.isMultiPart()) {
+                            int origYaw = originalRotation % 4;
+                            int transYaw = transformedRotation % 4;
+                            int cW = baseSizeInfo.gridWidth();   // conceptual width
+                            int cD = baseSizeInfo.gridDepth();   // conceptual depth
+                            int cH = baseSizeInfo.gridHeight();  // conceptual height
+
+                            if (flipX && origYaw != transYaw) {
+                                // FlipX: compenser l'inversion Z (effet secondaire)
+                                if (origYaw == 0 && transYaw == 2) {
+                                    // D: +Z → -Z -> compenser Z += (cD-1)
+                                    if (cD > 1) worldZ += (cD - 1);
+                                } else if (origYaw == 2 && transYaw == 0) {
+                                    // D: -Z → +Z -> compenser Z -= (cD-1)
+                                    if (cD > 1) worldZ -= (cD - 1);
+                                } else if (origYaw == 1 && transYaw == 3) {
+                                    // W: +Z → -Z -> compenser Z += (cW-1)
+                                    if (cW > 1) worldZ += (cW - 1);
+                                } else if (origYaw == 3 && transYaw == 1) {
+                                    // W: -Z → +Z -> compenser Z -= (cW-1)
+                                    if (cW > 1) worldZ -= (cW - 1);
+                                }
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
+                                            + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                            + " cW=" + cW + " cD=" + cD
+                                            + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                }
+                            }
+
+                            if (flipZ && origYaw != transYaw) {
+                                // FlipZ: compenser l'inversion X (effet secondaire)
+                                if (origYaw == 0 && transYaw == 2) {
+                                    // W: +X → -X -> compenser X += (cW-1)
+                                    if (cW > 1) worldX += (cW - 1);
+                                } else if (origYaw == 2 && transYaw == 0) {
+                                    // W: -X → +X -> compenser X -= (cW-1)
+                                    if (cW > 1) worldX -= (cW - 1);
+                                } else if (origYaw == 1 && transYaw == 3) {
+                                    // D: -X → +X -> compenser X -= (cD-1)
+                                    if (cD > 1) worldX -= (cD - 1);
+                                } else if (origYaw == 3 && transYaw == 1) {
+                                    // D: +X → -X -> compenser X += (cD-1)
+                                    if (cD > 1) worldX += (cD - 1);
+                                }
+                                if (dbg != null) {
+                                    dbg.log("PASTE", "  Multi-part flipZ comp: " + blockType
+                                            + " origYaw=" + origYaw + " transYaw=" + transYaw
+                                            + " cW=" + cW + " cD=" + cD
+                                            + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                }
+                            }
+
+                            if (vFlip) {
+                                if (cH > 1) {
+                                    worldY += (cH - 1);
                                     if (dbg != null) {
                                         dbg.log("PASTE", "  Multi-part vFlip: " + blockType
-                                                + " gh=" + conceptHeight + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                                + " gh=" + cH + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
                                     }
                                 }
                             }
@@ -727,15 +788,20 @@ public class ClipboardOperations {
         boolean isMultiPart = sizeInfo != null && sizeInfo.isMultiPart();
 
         // === FlipX (miroir est/ouest) ===
-        // Pour les blocs multi-part : SEULEMENT swap 0<->2 (axe X du filler inversé par le miroir X).
-        //   Les yaw 1 et 3 (filler en Z) ne sont PAS affectés par un miroir X -> pas de swap 1<->3.
-        //   Pas de compensation de position nécessaire : le miroir X gère naturellement le décalage.
+        // Pour les blocs multi-part : swap COMPLET 0<->2 ET 1<->3.
+        //   Un miroir X inverse la direction X. Pour les multipart, cela affecte :
+        //   - yaw 0/2 : le width (axe X) s'inverse -> swap 0<->2
+        //   - yaw 1/3 : le depth (axe X) s'inverse -> swap 1<->3
+        //   Les dimensions non-miroir (Z) s'inversent aussi (effet secondaire du swap).
+        //   La compensation de position corrige cet effet secondaire dans le paste.
         // Pour les blocs normaux : swap standard 1<->3 (Est<->Ouest) + overrides éventuels.
         if (flipX) {
             if (isMultiPart) {
-                // Multi-part: SEULEMENT swap axe X (0<->2), ne PAS toucher à 1/3
+                // Multi-part: swap COMPLET (0<->2 et 1<->3)
                 if (yaw == 0) yaw = 2;
                 else if (yaw == 2) yaw = 0;
+                else if (yaw == 1) yaw = 3;
+                else if (yaw == 3) yaw = 1;
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
                 if (nativeYaw >= 0) {
@@ -757,14 +823,19 @@ public class ClipboardOperations {
         }
 
         // === FlipZ (miroir nord/sud) ===
-        // Pour les blocs multi-part : SEULEMENT swap 1<->3 (axe Z du filler inversé par le miroir Z).
-        //   Les yaw 0 et 2 (filler en X) ne sont PAS affectés par un miroir Z -> pas de swap 0<->2.
-        //   Pas de compensation de position nécessaire : le miroir Z gère naturellement le décalage.
+        // Pour les blocs multi-part : swap COMPLET 0<->2 ET 1<->3.
+        //   Un miroir Z inverse la direction Z. Pour les multipart, cela affecte :
+        //   - yaw 1/3 : le width (axe Z) s'inverse -> swap 1<->3
+        //   - yaw 0/2 : le depth (axe Z) s'inverse -> swap 0<->2
+        //   Les dimensions non-miroir (X) s'inversent aussi (effet secondaire du swap).
+        //   La compensation de position corrige cet effet secondaire dans le paste.
         // Pour les blocs normaux : swap standard 0<->2 (Nord<->Sud) + overrides éventuels.
         if (flipZ) {
             if (isMultiPart) {
-                // Multi-part: SEULEMENT swap axe Z (1<->3), ne PAS toucher à 0/2
-                if (yaw == 1) yaw = 3;
+                // Multi-part: swap COMPLET (0<->2 et 1<->3)
+                if (yaw == 0) yaw = 2;
+                else if (yaw == 2) yaw = 0;
+                else if (yaw == 1) yaw = 3;
                 else if (yaw == 3) yaw = 1;
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
