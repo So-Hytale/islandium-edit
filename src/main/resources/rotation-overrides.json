@@ -41,6 +41,20 @@
       "replace_standard": true,
       "flipZ_swap_yaw": [[0, 3], [1, 2]],
       "flipX_swap_yaw": [[0, 1], [2, 3]]
+    },
+    {
+      "pattern": "Brick_Wall",
+      "comment": "Murs: bloc plat asymetrique, meme comportement que Roof_Flat",
+      "replace_standard": true,
+      "flipZ_swap_yaw": [[1, 3]],
+      "flipX_swap_yaw": [[0, 2]]
+    },
+    {
+      "pattern": "Wall_State_Definitions_Corner",
+      "comment": "Coins de mur: bloc en L asymetrique, meme comportement que Fence Corner",
+      "replace_standard": true,
+      "flipZ_swap_yaw": [[0, 3], [1, 2]],
+      "flipX_swap_yaw": [[0, 1], [2, 3]]
     }
   ]
 }
