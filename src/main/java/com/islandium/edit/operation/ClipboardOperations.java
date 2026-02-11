@@ -347,20 +347,70 @@ public class ClipboardOperations {
                     int originalRotation = clipboard.getRotation(cx, cy, cz);
                     int transformedRotation = transformRotation(originalRotation, transform, blockType);
 
-                    // Compensation de position pour les blocs multi-part lors de vFlip.
-                    // Pour flipX et flipZ : pas de compensation nécessaire car le swap de yaw
-                    // est limité à l'axe du miroir (0<->2 pour flipX, 1<->3 pour flipZ),
-                    // et le miroir de coordonnées gère naturellement le décalage du filler.
-                    // Pour vFlip : le filler Y est toujours en +Y, il faut compenser.
-                    if (vFlip) {
-                        BlockSizeHelper.BlockSizeInfo transSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
-                        if (transSizeInfo != null && transSizeInfo.isMultiPart()) {
-                            int transGh = transSizeInfo.gridHeight();
-                            if (transGh > 1) {
-                                worldY += (transGh - 1);
-                                if (dbg != null) {
-                                    dbg.log("PASTE", "  Multi-part vFlip: " + blockType
-                                            + " transGh=" + transGh + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                    // Compensation de position pour les blocs multi-part.
+                    // Le yaw n'est PAS modifié pour les multipart (le visuel est préservé).
+                    // Mais le filler s'étend toujours dans la même direction depuis l'origin.
+                    // Après le miroir, l'origin est au mauvais bout -> il faut décaler l'origin
+                    // pour que l'ensemble origin+filler occupe la bonne zone.
+                    //
+                    // Direction du filler par yaw: 0=+X, 1=+Z, 2=-X, 3=-Z
+                    // FlipX: seuls les fillers en X (yaw 0 ou 2) sont affectés.
+                    //   yaw 0 (filler +X) après miroir: origin trop à droite -> worldX -= (gw-1)
+                    //   yaw 2 (filler -X) après miroir: origin trop à gauche -> worldX += (gw-1)
+                    // FlipZ: seuls les fillers en Z (yaw 1 ou 3) sont affectés.
+                    //   yaw 1 (filler +Z) après miroir: origin trop au sud -> worldZ -= (gd-1)
+                    //   yaw 3 (filler -Z) après miroir: origin trop au nord -> worldZ += (gd-1)
+                    // vFlip: filler Y toujours en +Y -> worldY += (gh-1)
+                    {
+                        BlockSizeHelper.BlockSizeInfo mpSizeInfo = BlockSizeHelper.getBlockSize(blockType, transformedRotation);
+                        if (mpSizeInfo != null && mpSizeInfo.isMultiPart()) {
+                            int transYaw = transformedRotation % 4;
+
+                            if (flipX) {
+                                int gw = mpSizeInfo.gridWidth();
+                                if (gw > 1) {
+                                    if (transYaw == 0) {
+                                        // filler +X, miroir X -> décaler origin vers -X
+                                        worldX -= (gw - 1);
+                                    } else if (transYaw == 2) {
+                                        // filler -X, miroir X -> décaler origin vers +X
+                                        worldX += (gw - 1);
+                                    }
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
+                                                + " yaw=" + transYaw + " gw=" + gw
+                                                + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
+                                }
+                            }
+
+                            if (flipZ) {
+                                int gd = mpSizeInfo.gridDepth();
+                                if (gd > 1) {
+                                    if (transYaw == 1) {
+                                        // filler +Z, miroir Z -> décaler origin vers -Z
+                                        worldZ -= (gd - 1);
+                                    } else if (transYaw == 3) {
+                                        // filler -Z, miroir Z -> décaler origin vers +Z
+                                        worldZ += (gd - 1);
+                                    }
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part flipZ comp: " + blockType
+                                                + " yaw=" + transYaw + " gd=" + gd
+                                                + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
+                                }
+                            }
+
+                            if (vFlip) {
+                                int gh = mpSizeInfo.gridHeight();
+                                if (gh > 1) {
+                                    worldY += (gh - 1);
+                                    if (dbg != null) {
+                                        dbg.log("PASTE", "  Multi-part vFlip comp: " + blockType
+                                                + " gh=" + gh
+                                                + " -> world=(" + worldX + "," + worldY + "," + worldZ + ")");
+                                    }
                                 }
                             }
                         }
@@ -719,15 +769,13 @@ public class ClipboardOperations {
         boolean isMultiPart = sizeInfo != null && sizeInfo.isMultiPart();
 
         // === FlipX (miroir est/ouest) ===
-        // Pour les blocs multi-part : SEULEMENT swap 0<->2 (axe X du filler inversé par le miroir X).
-        //   Les yaw 1 et 3 (filler en Z) ne sont PAS affectés par un miroir X -> pas de swap 1<->3.
-        //   Pas de compensation de position nécessaire : le miroir X gère naturellement le décalage.
+        // Pour les blocs multi-part : NE PAS modifier le yaw. Le visuel est préservé tel quel.
+        //   La compensation de position dans le paste corrige le placement du filler.
         // Pour les blocs normaux : swap standard 1<->3 (Est<->Ouest) + overrides éventuels.
         if (flipX) {
             if (isMultiPart) {
-                // Multi-part: SEULEMENT swap axe X (0<->2), ne PAS toucher à 1/3
-                if (yaw == 0) yaw = 2;
-                else if (yaw == 2) yaw = 0;
+                // Multi-part: ne PAS toucher au yaw.
+                // La compensation de position dans le paste gère le filler.
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
                 if (nativeYaw >= 0) {
@@ -749,15 +797,13 @@ public class ClipboardOperations {
         }
 
         // === FlipZ (miroir nord/sud) ===
-        // Pour les blocs multi-part : SEULEMENT swap 1<->3 (axe Z du filler inversé par le miroir Z).
-        //   Les yaw 0 et 2 (filler en X) ne sont PAS affectés par un miroir Z -> pas de swap 0<->2.
-        //   Pas de compensation de position nécessaire : le miroir Z gère naturellement le décalage.
+        // Pour les blocs multi-part : NE PAS modifier le yaw. Le visuel est préservé tel quel.
+        //   La compensation de position dans le paste corrige le placement du filler.
         // Pour les blocs normaux : swap standard 0<->2 (Nord<->Sud) + overrides éventuels.
         if (flipZ) {
             if (isMultiPart) {
-                // Multi-part: SEULEMENT swap axe Z (1<->3), ne PAS toucher à 0/2
-                if (yaw == 1) yaw = 3;
-                else if (yaw == 3) yaw = 1;
+                // Multi-part: ne PAS toucher au yaw.
+                // La compensation de position dans le paste gère le filler.
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
                 if (nativeYaw >= 0) {
