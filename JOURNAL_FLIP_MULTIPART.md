@@ -44,4 +44,26 @@ Fichier principal: `src/main/java/com/islandium/edit/operation/ClipboardOperatio
 - Les fillers en Z (yaw 1/3) ne sont pas affectes par un miroir X -> pas de swap 1<->3
 - Le miroir de coordonnees gere naturellement le decalage spatial du filler
 
+**Resultat**: Bancs OK, positionnement OK. Mais les lits ont le visuel inverse (tete/pieds) car le swap 0<->2 change aussi l'apparence visuelle du lit (marque SYMMETRIC par l'API mais visuellement asymetrique).
+
+## v6 - Aucun swap yaw + compensation position (2026-02-11 10:32)
+**Approche**: NE PAS modifier le yaw des blocs multipart du tout. A la place, compenser la position de l'origin pour que le filler auto-cree par Hytale occupe la bonne zone.
+
+**Principe**:
+- Le yaw est preserve -> le visuel du bloc est identique (tete/pieds du lit, orientation du banc)
+- Apres le miroir, l'origin est au mauvais bout du bloc -> on decale l'origin
+- Le filler s'etend depuis l'origin dans la meme direction (inchangee)
+- Le resultat : origin+filler occupent les positions correctes en miroir
+
+**Compensation par cas** (direction filler par yaw: 0=+X, 1=+Z, 2=-X, 3=-Z):
+- FlipX + yaw 0 (filler +X) : `worldX -= (gridWidth - 1)`
+- FlipX + yaw 2 (filler -X) : `worldX += (gridWidth - 1)`
+- FlipX + yaw 1 ou 3 : pas de compensation (filler en Z, pas affecte par miroir X)
+- FlipZ + yaw 1 (filler +Z) : `worldZ -= (gridDepth - 1)`
+- FlipZ + yaw 3 (filler -Z) : `worldZ += (gridDepth - 1)`
+- FlipZ + yaw 0 ou 2 : pas de compensation (filler en X, pas affecte par miroir Z)
+- vFlip : `worldY += (gridHeight - 1)` (filler toujours en +Y)
+
+**Avantage par rapport a v5**: Fonctionne pour TOUS les multipart, y compris les blocs visuellement asymetriques (lit) marques SYMMETRIC par l'API. Pas besoin d'overrides speciaux.
+
 **Resultat**: EN TEST
