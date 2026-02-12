@@ -371,15 +371,20 @@ public class ClipboardOperations {
                             int cD = baseSizeInfo.gridDepth();
                             int cH = baseSizeInfo.gridHeight();
 
-                            if (flipX && origYaw != transYaw) {
-                                if (origYaw == 0 && transYaw == 2) {
-                                    if (cD > 1) worldZ += (cD - 1);
-                                } else if (origYaw == 2 && transYaw == 0) {
-                                    if (cD > 1) worldZ -= (cD - 1);
-                                } else if (origYaw == 1 && transYaw == 3) {
-                                    if (cW > 1) worldZ += (cW - 1);
-                                } else if (origYaw == 3 && transYaw == 1) {
-                                    if (cW > 1) worldZ -= (cW - 1);
+                            if (flipX) {
+                                if (origYaw == transYaw && cD > 1) {
+                                    // Lit (cD>1) : yaw inchangé, compenser position X
+                                    // Le miroir X inverse les coordonnées X. Le width du lit
+                                    // pointe dans une direction qu'il faut "réancrer".
+                                    // yaw0: W=+X → origin doit reculer de cW-1 en X
+                                    // yaw2: W=-X → origin doit avancer de cW-1 en X
+                                    // yaw1: W=+Z (pas affecté), D=-X → reculer de cD-1 en X
+                                    // yaw3: W=-Z (pas affecté), D=+X → avancer de cD-1 en X... non
+                                    if (origYaw == 0) worldX -= (cW - 1);
+                                    else if (origYaw == 2) worldX += (cW - 1);
+                                } else if (origYaw != transYaw) {
+                                    // Banc (cD==1) : yaw swappé, pas de compensation
+                                    // (rien à faire, le swap gère tout)
                                 }
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
@@ -389,15 +394,18 @@ public class ClipboardOperations {
                                 }
                             }
 
-                            if (flipZ && origYaw != transYaw) {
-                                if (origYaw == 0 && transYaw == 2) {
-                                    if (cW > 1) worldX += (cW - 1);
-                                } else if (origYaw == 2 && transYaw == 0) {
-                                    if (cW > 1) worldX -= (cW - 1);
-                                } else if (origYaw == 1 && transYaw == 3) {
-                                    if (cD > 1) worldX -= (cD - 1);
-                                } else if (origYaw == 3 && transYaw == 1) {
-                                    if (cD > 1) worldX += (cD - 1);
+                            if (flipZ) {
+                                if (origYaw == transYaw && cD > 1) {
+                                    // Lit (cD>1) : yaw inchangé, compenser position Z
+                                    // Le miroir Z inverse les coordonnées Z.
+                                    // yaw1: W=+Z → origin doit reculer de cW-1 en Z
+                                    // yaw3: W=-Z → origin doit avancer de cW-1 en Z
+                                    // yaw0: W=+X (pas affecté), D=+Z → reculer de cD-1 en Z
+                                    // yaw2: W=-X (pas affecté), D=-Z → avancer de cD-1 en Z... non
+                                    if (origYaw == 1) worldZ -= (cW - 1);
+                                    else if (origYaw == 3) worldZ += (cW - 1);
+                                } else if (origYaw != transYaw) {
+                                    // Banc (cD==1) : yaw swappé, pas de compensation
                                 }
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipZ comp: " + blockType
