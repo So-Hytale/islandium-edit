@@ -373,20 +373,15 @@ public class ClipboardOperations {
 
                             if (flipX) {
                                 if (origYaw == transYaw && cD > 1) {
-                                    // Lit (cD>1) : yaw inchangé, compenser position X
-                                    // Le miroir X inverse les coordonnées X.
-                                    // On doit compenser pour Width (si W est sur X) ET Depth (si D est sur X).
-                                    // yaw0: W=+X → compenser cW-1 | D=+Z → pas sur X
-                                    // yaw1: W=+Z → pas sur X       | D=-X → compenser cD-1
-                                    // yaw2: W=-X → compenser cW-1  | D=-Z → pas sur X
-                                    // yaw3: W=-Z → pas sur X       | D=+X → compenser cD-1
+                                    // Lit (cD>1), yaw inchangé (depth pas sur X) : compenser width sur X
+                                    // yaw0: W=+X → worldX -= (cW-1)
+                                    // yaw2: W=-X → worldX += (cW-1)
                                     if (origYaw == 0) worldX -= (cW - 1);
                                     else if (origYaw == 2) worldX += (cW - 1);
-                                    else if (origYaw == 1) worldX += (cD - 1);
-                                    else if (origYaw == 3) worldX -= (cD - 1);
-                                } else if (origYaw != transYaw) {
-                                    // Banc (cD==1) : yaw swappé, pas de compensation
                                 }
+                                // Si origYaw != transYaw : yaw swappé (depth sur X), pas de compensation
+                                // nécessaire car le swap de direction gère le depth et le width est sur Z
+                                // (non affecté par le miroir X)
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
                                             + " origYaw=" + origYaw + " transYaw=" + transYaw
@@ -397,20 +392,15 @@ public class ClipboardOperations {
 
                             if (flipZ) {
                                 if (origYaw == transYaw && cD > 1) {
-                                    // Lit (cD>1) : yaw inchangé, compenser position Z
-                                    // Le miroir Z inverse les coordonnées Z.
-                                    // On doit compenser pour Width (si W est sur Z) ET Depth (si D est sur Z).
-                                    // yaw0: W=+X → pas sur Z       | D=+Z → compenser cD-1
-                                    // yaw1: W=+Z → compenser cW-1  | D=-X → pas sur Z
-                                    // yaw2: W=-X → pas sur Z       | D=-Z → compenser cD-1
-                                    // yaw3: W=-Z → compenser cW-1  | D=+X → pas sur Z
+                                    // Lit (cD>1), yaw inchangé (depth pas sur Z) : compenser width sur Z
+                                    // yaw1: W=+Z → worldZ -= (cW-1)
+                                    // yaw3: W=-Z → worldZ += (cW-1)
                                     if (origYaw == 1) worldZ -= (cW - 1);
                                     else if (origYaw == 3) worldZ += (cW - 1);
-                                    else if (origYaw == 0) worldZ -= (cD - 1);
-                                    else if (origYaw == 2) worldZ += (cD - 1);
-                                } else if (origYaw != transYaw) {
-                                    // Banc (cD==1) : yaw swappé, pas de compensation
                                 }
+                                // Si origYaw != transYaw : yaw swappé (depth sur Z), pas de compensation
+                                // nécessaire car le swap de direction gère le depth et le width est sur X
+                                // (non affecté par le miroir Z)
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipZ comp: " + blockType
                                             + " origYaw=" + origYaw + " transYaw=" + transYaw
@@ -951,25 +941,27 @@ public class ClipboardOperations {
         }
 
         // === FlipX (miroir est/ouest) ===
-        // Pour les blocs multi-part : swap COMPLET 0<->2 ET 1<->3.
-        //   Un miroir X inverse la direction X. Pour les multipart, cela affecte :
-        //   - yaw 0/2 : le width (axe X) s'inverse -> swap 0<->2
-        //   - yaw 1/3 : le depth (axe X) s'inverse -> swap 1<->3
-        //   Les dimensions non-miroir (Z) s'inversent aussi (effet secondaire du swap).
-        //   La compensation de position corrige cet effet secondaire dans le paste.
+        // Pour les multipart, la logique dépend de la relation depth/axe du flip :
+        //   - Si le depth est sur l'axe X (yaw 1/3) → swap yaw pour inverser la direction du depth
+        //   - Si le depth n'est PAS sur l'axe X (yaw 0/2) → pas de swap (depth sur Z, pas affecté)
+        //   La compensation de position dans le paste gère le décalage du width.
         // Pour les blocs normaux : swap standard 1<->3 (Est<->Ouest) + overrides éventuels.
         if (flipX) {
             if (isMultiPart) {
-                // Multi-part flipX:
-                // Pour cD==1 (banc 2x1x1): swap 0<->2 suffit (depth trivial, pas d'effet secondaire)
-                // Pour cD>1 (lit 2x2x3): NE PAS swapper le yaw (sinon tête/pieds inversés).
-                //   Le miroir X est géré par compensation de position dans le paste.
                 BlockSizeHelper.BlockSizeInfo bsi = BlockSizeHelper.getBlockSize(blockType, 0);
                 int cD = bsi != null ? bsi.gridDepth() : 1;
                 if (cD <= 1) {
-                    // Blocs simples (banc): swap axe X
+                    // Blocs simples (banc): swap axe X (width sur X)
                     if (yaw == 0) yaw = 2;
                     else if (yaw == 2) yaw = 0;
+                } else {
+                    // Blocs profonds (lit cD>1): swap seulement si le depth est sur X
+                    // yaw0: D=+Z (pas sur X) → pas de swap
+                    // yaw1: D=-X → swap 1<->3 pour inverser la direction depth
+                    // yaw2: D=-Z (pas sur X) → pas de swap
+                    // yaw3: D=+X → swap 1<->3 pour inverser la direction depth
+                    if (yaw == 1) yaw = 3;
+                    else if (yaw == 3) yaw = 1;
                 }
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
@@ -992,25 +984,27 @@ public class ClipboardOperations {
         }
 
         // === FlipZ (miroir nord/sud) ===
-        // Pour les blocs multi-part : swap COMPLET 0<->2 ET 1<->3.
-        //   Un miroir Z inverse la direction Z. Pour les multipart, cela affecte :
-        //   - yaw 1/3 : le width (axe Z) s'inverse -> swap 1<->3
-        //   - yaw 0/2 : le depth (axe Z) s'inverse -> swap 0<->2
-        //   Les dimensions non-miroir (X) s'inversent aussi (effet secondaire du swap).
-        //   La compensation de position corrige cet effet secondaire dans le paste.
+        // Pour les multipart, la logique dépend de la relation depth/axe du flip :
+        //   - Si le depth est sur l'axe Z (yaw 0/2) → swap yaw pour inverser la direction du depth
+        //   - Si le depth n'est PAS sur l'axe Z (yaw 1/3) → pas de swap (depth sur X, pas affecté)
+        //   La compensation de position dans le paste gère le décalage du width.
         // Pour les blocs normaux : swap standard 0<->2 (Nord<->Sud) + overrides éventuels.
         if (flipZ) {
             if (isMultiPart) {
-                // Multi-part flipZ:
-                // Pour cD==1 (banc 2x1x1): swap 1<->3 suffit (depth trivial)
-                // Pour cD>1 (lit 2x2x3): NE PAS swapper le yaw (sinon tête/pieds inversés).
-                //   Le miroir Z est géré par compensation de position dans le paste.
                 BlockSizeHelper.BlockSizeInfo bsi = BlockSizeHelper.getBlockSize(blockType, 0);
                 int cD = bsi != null ? bsi.gridDepth() : 1;
                 if (cD <= 1) {
-                    // Blocs simples (banc): swap axe Z
+                    // Blocs simples (banc): swap axe Z (width sur Z)
                     if (yaw == 1) yaw = 3;
                     else if (yaw == 3) yaw = 1;
+                } else {
+                    // Blocs profonds (lit cD>1): swap seulement si le depth est sur Z
+                    // yaw0: D=+Z → swap 0<->2 pour inverser la direction depth
+                    // yaw1: D=-X (pas sur Z) → pas de swap
+                    // yaw2: D=-Z → swap 0<->2 pour inverser la direction depth
+                    // yaw3: D=+X (pas sur Z) → pas de swap
+                    if (yaw == 0) yaw = 2;
+                    else if (yaw == 2) yaw = 0;
                 }
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
