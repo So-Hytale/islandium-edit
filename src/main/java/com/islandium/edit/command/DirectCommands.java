@@ -7,6 +7,8 @@ import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredAr
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.islandium.core.api.util.ColorUtil;
+import com.islandium.core.api.util.NotificationType;
+import com.islandium.core.api.util.NotificationUtil;
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
@@ -107,9 +109,10 @@ public class DirectCommands {
 
     static void sendResult(CommandContext ctx, BlockOperations.OperationResult result) {
         if (result.success()) {
-            ctx.sendMessage(ColorUtil.parse("&a" + result.message() + " &7(" + result.blocksAffected() + " blocs)"));
+            NotificationUtil.send(ctx, NotificationType.SUCCESS,
+                    result.message(), result.blocksAffected() + " blocs");
         } else {
-            ctx.sendMessage(ColorUtil.parse("&c" + result.message()));
+            NotificationUtil.send(ctx, NotificationType.ERROR, result.message());
         }
     }
 
@@ -131,13 +134,13 @@ public class DirectCommands {
             try {
                 var inventory = player.getInventory();
                 if (inventory == null) {
-                    ctx.sendMessage(ColorUtil.parse("&cErreur: inventaire introuvable"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Inventaire introuvable");
                     return CompletableFuture.completedFuture(null);
                 }
 
                 var hotbar = inventory.getHotbar();
                 if (hotbar == null) {
-                    ctx.sendMessage(ColorUtil.parse("&cErreur: hotbar introuvable"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Hotbar introuvable");
                     return CompletableFuture.completedFuture(null);
                 }
 
@@ -145,12 +148,12 @@ public class DirectCommands {
                 var transaction = hotbar.addItemStack(wand);
 
                 if (transaction.succeeded()) {
-                    ctx.sendMessage(ColorUtil.parse("&aWand ajoutee! &7(Clic gauche = Pos1, Clic droit = Pos2)"));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Wand ajoutee!", "Clic gauche = Pos1, Clic droit = Pos2");
                 } else {
-                    ctx.sendMessage(ColorUtil.parse("&cHotbar pleine!"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Hotbar pleine!");
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -176,14 +179,14 @@ public class DirectCommands {
                         (int) pos.getX(), (int) pos.getY(), (int) pos.getZ());
 
                 if (plugin.getSelectionManager().setPos1(player, vec)) {
-                    ctx.sendMessage(ColorUtil.parse("&aPos1: &f" + vec.getX() + ", " + vec.getY() + ", " + vec.getZ()));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Pos1: " + vec.getX() + ", " + vec.getY() + ", " + vec.getZ());
                     if (plugin.getSelectionManager().hasValidSelection(player)) {
                         long volume = plugin.getSelectionManager().getVolume(player);
-                        ctx.sendMessage(ColorUtil.parse("&7Selection: " + volume + " blocs"));
+                        NotificationUtil.send(ctx, NotificationType.INFO, "Selection: " + volume + " blocs");
                     }
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -209,14 +212,14 @@ public class DirectCommands {
                         (int) pos.getX(), (int) pos.getY(), (int) pos.getZ());
 
                 if (plugin.getSelectionManager().setPos2(player, vec)) {
-                    ctx.sendMessage(ColorUtil.parse("&aPos2: &f" + vec.getX() + ", " + vec.getY() + ", " + vec.getZ()));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Pos2: " + vec.getX() + ", " + vec.getY() + ", " + vec.getZ());
                     if (plugin.getSelectionManager().hasValidSelection(player)) {
                         long volume = plugin.getSelectionManager().getVolume(player);
-                        ctx.sendMessage(ColorUtil.parse("&7Selection: " + volume + " blocs"));
+                        NotificationUtil.send(ctx, NotificationType.INFO, "Selection: " + volume + " blocs");
                     }
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -240,17 +243,17 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplissage avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplissage avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().fill(player, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -275,23 +278,23 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolvedFrom = plugin.getBlockOperations().resolveBlockTypeWithError(player, ctx.get(fromArg));
             if (!resolvedFrom.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[from] " + resolvedFrom.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[from] " + resolvedFrom.error());
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolvedTo = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(toArg));
             if (!resolvedTo.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[to] " + resolvedTo.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[to] " + resolvedTo.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplacement " + resolvedFrom.blockType() + " -> " + resolvedTo.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplacement " + resolvedFrom.blockType() + " -> " + resolvedTo.pattern() + "...");
             return plugin.getBlockOperations().replace(player, resolvedFrom.blockType(), resolvedTo.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -312,11 +315,11 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Vidage..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Vidage...");
             return plugin.getBlockOperations().fill(player, "air")
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -341,17 +344,17 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation des murs..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation des murs...");
             return plugin.getBlockOperations().walls(player, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -374,17 +377,17 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation du sol..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation du sol...");
             return plugin.getBlockOperations().floor(player, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -408,17 +411,17 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation du plafond..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation du plafond...");
             return plugin.getBlockOperations().ceiling(player, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -441,17 +444,17 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation du contour..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation du contour...");
             return plugin.getBlockOperations().outline(player, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -474,11 +477,11 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Copie..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Copie...");
             return plugin.getClipboardOperations().copy(player)
                     .thenCompose(result -> {
                         sendResult(ctx, result);
@@ -489,7 +492,7 @@ public class DirectCommands {
                             return plugin.getPreviewManager().startPersistentPreview(player)
                                     .thenAccept(previewResult -> {
                                         if (previewResult.success()) {
-                                            ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /estop pour annuler"));
+                                            NotificationUtil.send(ctx, NotificationType.INFO, "Preview active - /epaste pour coller, /estop pour annuler");
                                         }
                                     })
                                     .thenApply(v -> null);
@@ -513,11 +516,11 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Coupe..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Coupe...");
             return plugin.getClipboardOperations().copy(player)
                     .thenCompose(copyResult -> {
                         if (!copyResult.success()) {
@@ -528,7 +531,7 @@ public class DirectCommands {
                         return plugin.getBlockOperations().fill(player, "air")
                                 .thenCompose(clearResult -> {
                                     if (clearResult.success()) {
-                                        ctx.sendMessage(ColorUtil.parse("&aCoupe: " + copied + " blocs"));
+                                        NotificationUtil.send(ctx, NotificationType.SUCCESS, "Coupe: " + copied + " blocs");
                                         // Afficher le HUD Edit
                                         plugin.getEditHudManager().showHud(player);
                                     } else {
@@ -556,7 +559,7 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getClipboardOperations().hasClipboard(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Clipboard vide");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -571,7 +574,7 @@ public class DirectCommands {
 
             // /epaste --a true  -> skip air
             boolean skipAir = Boolean.TRUE.equals(ctx.get(skipAirArg));
-            ctx.sendMessage(ColorUtil.parse("&7Collage" + (skipAir ? " (sans air)" : "") + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Collage" + (skipAir ? " (sans air)" : "") + "...");
 
             // Utiliser la position figee si disponible, sinon position actuelle
             return plugin.getClipboardOperations().paste(player, skipAir, frozenPos)
@@ -603,7 +606,7 @@ public class DirectCommands {
                 return plugin.getPreviewManager().startPersistentPreview(player)
                         .thenAccept(previewResult -> {
                             if (previewResult.success()) {
-                                ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /epreview stop pour annuler"));
+                                NotificationUtil.send(ctx, NotificationType.INFO, "Preview active - /epaste pour coller, /epreview stop pour annuler");
                             }
                         })
                         .thenApply(v -> null);
@@ -637,7 +640,7 @@ public class DirectCommands {
 
                 // Axes standards
                 if (!axisLower.equals("x") && !axisLower.equals("y") && !axisLower.equals("z")) {
-                    ctx.sendMessage(ColorUtil.parse("&cAxe invalide! Utiliser: x, y ou z"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Axe invalide! Utiliser: x, y ou z");
                     return CompletableFuture.completedFuture(null);
                 }
                 result = plugin.getClipboardOperations().flip(player, axisLower);
@@ -653,7 +656,7 @@ public class DirectCommands {
                 return plugin.getPreviewManager().startPersistentPreview(player)
                         .thenAccept(previewResult -> {
                             if (previewResult.success()) {
-                                ctx.sendMessage(ColorUtil.parse("&7Preview active - /epaste pour coller, /epreview stop pour annuler"));
+                                NotificationUtil.send(ctx, NotificationType.INFO, "Preview active - /epaste pour coller, /epreview stop pour annuler");
                             }
                         })
                         .thenApply(v -> null);
@@ -678,7 +681,7 @@ public class DirectCommands {
             if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
             Player player = ctx.senderAs(Player.class);
 
-            ctx.sendMessage(ColorUtil.parse("&7Annulation..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Annulation...");
             return plugin.getBlockOperations().undo(player)
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -698,7 +701,7 @@ public class DirectCommands {
             if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
             Player player = ctx.senderAs(Player.class);
 
-            ctx.sendMessage(ColorUtil.parse("&7Refaire..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Refaire...");
             return plugin.getBlockOperations().redo(player)
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -728,7 +731,7 @@ public class DirectCommands {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -762,7 +765,7 @@ public class DirectCommands {
             int height = ctx.get(heightArg);
 
             if (radius < 1 || radius > 100 || height < 1 || height > 256) {
-                ctx.sendMessage(ColorUtil.parse("&cValeurs invalides (rayon: 1-100, hauteur: 1-256)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Valeurs invalides (rayon: 1-100, hauteur: 1-256)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -792,7 +795,7 @@ public class DirectCommands {
 
             int size = ctx.get(sizeArg);
             if (size < 1 || size > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cTaille invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Taille invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -826,7 +829,7 @@ public class DirectCommands {
             int height = ctx.get(heightArg);
 
             if (radius < 1 || radius > 100 || height < 1 || height > 256) {
-                ctx.sendMessage(ColorUtil.parse("&cValeurs invalides (rayon: 1-100, hauteur: 1-256)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Valeurs invalides (rayon: 1-100, hauteur: 1-256)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -856,7 +859,7 @@ public class DirectCommands {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -886,13 +889,13 @@ public class DirectCommands {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -902,7 +905,7 @@ public class DirectCommands {
             int yLevel = (int) pos.getY();
             int centerZ = (int) pos.getZ();
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplissage air (rayon " + radius + ", Y=" + yLevel + ")..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplissage air (rayon " + radius + ", Y=" + yLevel + ")...");
             return plugin.getBlockOperations().fillAirAroundPlayer(player, resolved.pattern().toString(), centerX, yLevel, centerZ, radius)
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -928,13 +931,13 @@ public class DirectCommands {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -944,7 +947,7 @@ public class DirectCommands {
             int yStart = (int) pos.getY();
             int centerZ = (int) pos.getZ();
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplissage air sous les pieds (rayon " + radius + ")..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplissage air sous les pieds (rayon " + radius + ")...");
             return plugin.getBlockOperations().fillAirBelowPlayer(player, resolved.pattern().toString(), centerX, yStart, centerZ, radius)
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -972,23 +975,23 @@ public class DirectCommands {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolvedFrom = plugin.getBlockOperations().resolveBlockTypeWithError(player, ctx.get(fromArg));
             if (!resolvedFrom.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[from] " + resolvedFrom.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[from] " + resolvedFrom.error());
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolvedTo = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(toArg));
             if (!resolvedTo.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[to] " + resolvedTo.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[to] " + resolvedTo.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplacement (rayon " + radius + ")..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplacement (rayon " + radius + ")...");
             return plugin.getBlockOperations().replaceNear(player, radius, resolvedFrom.blockType(), resolvedTo.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
@@ -1011,7 +1014,7 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1052,27 +1055,27 @@ public class DirectCommands {
             if (mode != null && mode.equalsIgnoreCase("stop")) {
                 if (plugin.getPreviewManager().hasActivePreview(player)) {
                     plugin.getPreviewManager().stopPreview(player);
-                    ctx.sendMessage(ColorUtil.parse("&aPreview arretee"));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Preview arretee");
                 } else {
-                    ctx.sendMessage(ColorUtil.parse("&cAucune preview active"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune preview active");
                 }
                 return CompletableFuture.completedFuture(null);
             }
 
             if (!plugin.getClipboardOperations().hasClipboard(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Clipboard vide");
                 return CompletableFuture.completedFuture(null);
             }
 
             // Mode start: preview persistante
             if (mode != null && mode.equalsIgnoreCase("start")) {
-                ctx.sendMessage(ColorUtil.parse("&7Demarrage de la preview persistante..."));
+                NotificationUtil.send(ctx, NotificationType.INFO, "Demarrage de la preview persistante...");
                 return plugin.getPreviewManager().startPersistentPreview(player)
                         .thenAccept(result -> {
                             if (result.success()) {
-                                ctx.sendMessage(ColorUtil.parse("&a" + result.message() + " &7(" + result.blockCount() + " blocs)"));
+                                NotificationUtil.send(ctx, NotificationType.SUCCESS, result.message(), result.blockCount() + " blocs");
                             } else {
-                                ctx.sendMessage(ColorUtil.parse("&c" + result.message()));
+                                NotificationUtil.send(ctx, NotificationType.ERROR, result.message());
                             }
                         })
                         .thenApply(v -> null);
@@ -1080,18 +1083,18 @@ public class DirectCommands {
 
             // Mode par defaut: preview temporaire 5 secondes
             if (plugin.getPreviewManager().hasActivePreview(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cPreview deja active - /epreview stop pour arreter"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Preview deja active - /epreview stop pour arreter");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Affichage de la preview..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Affichage de la preview...");
             return plugin.getPreviewManager().showPreview(player)
                     .thenAccept(result -> {
                         if (result.success()) {
-                            ctx.sendMessage(ColorUtil.parse("&a" + result.message() + " &7(" + result.blockCount() + " blocs)"));
+                            NotificationUtil.send(ctx, NotificationType.SUCCESS, result.message(), result.blockCount() + " blocs");
                             ctx.sendMessage(ColorUtil.parse("&7Les blocs de verre disparaitront automatiquement."));
                         } else {
-                            ctx.sendMessage(ColorUtil.parse("&c" + result.message()));
+                            NotificationUtil.send(ctx, NotificationType.ERROR, result.message());
                         }
                     })
                     .thenApply(v -> null);
@@ -1115,9 +1118,9 @@ public class DirectCommands {
             if (plugin.getPreviewManager().hasActivePreview(player)) {
                 plugin.getPreviewManager().stopPreview(player);
                 plugin.getEditHudManager().hideHud(player);
-                ctx.sendMessage(ColorUtil.parse("&aPreview arretee"));
+                NotificationUtil.send(ctx, NotificationType.SUCCESS, "Preview arretee");
             } else {
-                ctx.sendMessage(ColorUtil.parse("&cAucune preview active"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune preview active");
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -1138,14 +1141,14 @@ public class DirectCommands {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getClipboardOperations().hasClipboard(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Clipboard vide");
                 return CompletableFuture.completedFuture(null);
             }
 
             // Obtenir le clipboard
             ClipboardData clipboard = plugin.getClipboardOperations().getClipboard(player);
             if (clipboard == null || clipboard.isEmpty()) {
-                ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Clipboard vide");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1204,7 +1207,7 @@ public class DirectCommands {
 
             var transform = player.getTransformComponent();
             if (transform == null) {
-                ctx.sendMessage(ColorUtil.parse("&cPosition introuvable"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Position introuvable");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1290,7 +1293,7 @@ public class DirectCommands {
 
             var world = player.getWorld();
             if (world == null) {
-                ctx.sendMessage(ColorUtil.parse("&cMonde introuvable"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Monde introuvable");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1407,7 +1410,7 @@ public class DirectCommands {
                 ctx.sendMessage(ColorUtil.parse("&7Binaire: &f" + String.format("%6s", Integer.toBinaryString(rotation)).replace(' ', '0')
                         + " &7(roll[5:4] pitch[3:2] yaw[1:0])"));
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             }
         }
     }
@@ -1430,13 +1433,13 @@ public class DirectCommands {
             // Toggle: si deja fige -> defiger
             if (plugin.getPreviewManager().isFrozen(player)) {
                 plugin.getPreviewManager().unfreeze(player);
-                ctx.sendMessage(ColorUtil.parse("&aPreview defigee! &7(suit votre position)"));
+                NotificationUtil.send(ctx, NotificationType.SUCCESS, "Preview defigee!", "suit votre position");
                 return CompletableFuture.completedFuture(null);
             }
 
             // Sinon -> figer a la position actuelle
             if (!plugin.getClipboardOperations().hasClipboard(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cClipboard vide"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Clipboard vide");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1446,8 +1449,8 @@ public class DirectCommands {
             }
 
             plugin.getPreviewManager().freezeAt(player);
-            ctx.sendMessage(ColorUtil.parse("&aPreview figee! &7(cubes verts = position fixe)"));
-            ctx.sendMessage(ColorUtil.parse("&7/efig pour defiger, /epaste pour coller ici."));
+            NotificationUtil.send(ctx, NotificationType.SUCCESS, "Preview figee!", "cubes verts = position fixe");
+            NotificationUtil.send(ctx, NotificationType.INFO, "/efig pour defiger, /epaste pour coller ici.");
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1479,7 +1482,7 @@ public class DirectCommands {
             // Effacer le clipboard
             plugin.getClipboardOperations().clearClipboard(player);
 
-            ctx.sendMessage(ColorUtil.parse("&aClipboard efface, preview arretee. Remis a zero."));
+            NotificationUtil.send(ctx, NotificationType.SUCCESS, "Clipboard efface, preview arretee. Remis a zero.");
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1502,15 +1505,15 @@ public class DirectCommands {
                 RotationOverrides overrides = RotationOverrides.get();
                 if (overrides != null) {
                     overrides.reload(java.nio.file.Path.of("mods"));
-                    ctx.sendMessage(ColorUtil.parse("&aRotation overrides recharges!"));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Rotation overrides recharges!");
                     ctx.sendMessage(ColorUtil.parse("&7Native flip (API Hytale): "
                             + (overrides.isUseNativeFlip() ? "&aACTIF" : "&cDESACTIVE (overrides manuels)")));
                 } else {
                     RotationOverrides.init(java.nio.file.Path.of("mods"));
-                    ctx.sendMessage(ColorUtil.parse("&aRotation overrides initialises!"));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Rotation overrides initialises!");
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur reload: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur reload: " + e.getMessage());
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -1535,7 +1538,7 @@ public class DirectCommands {
 
             DebugLogger dbg = DebugLogger.get();
             if (dbg == null) {
-                ctx.sendMessage(ColorUtil.parse("&cDebug logger non initialise!"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Debug logger non initialise!");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1545,13 +1548,13 @@ public class DirectCommands {
                 // Afficher les filtres actifs
                 Set<String> filters = dbg.getBlockFilters();
                 if (filters.isEmpty()) {
-                    ctx.sendMessage(ColorUtil.parse("&7Filtre debug: &fdesactive &7(tous les blocs)"));
+                    NotificationUtil.send(ctx, NotificationType.INFO, "Filtre debug: desactive (tous les blocs)");
                 } else {
-                    ctx.sendMessage(ColorUtil.parse("&7Filtre debug actif: &e" + String.join("&7, &e", filters)));
+                    NotificationUtil.send(ctx, NotificationType.INFO, "Filtre debug actif: " + String.join(", ", filters));
                 }
             } else if ("clear".equalsIgnoreCase(input.trim())) {
                 dbg.clearBlockFilters();
-                ctx.sendMessage(ColorUtil.parse("&aFiltre debug supprime (tous les blocs seront logges)"));
+                NotificationUtil.send(ctx, NotificationType.SUCCESS, "Filtre debug supprime (tous les blocs seront logges)");
             } else {
                 // Parser les patterns séparés par virgules
                 String[] parts = input.split(",");
@@ -1561,8 +1564,8 @@ public class DirectCommands {
                     if (!trimmed.isEmpty()) patterns.add(trimmed);
                 }
                 dbg.setBlockFilters(patterns);
-                ctx.sendMessage(ColorUtil.parse("&aFiltre debug: &e" + String.join("&7, &e", patterns)));
-                ctx.sendMessage(ColorUtil.parse("&7Seuls les blocs contenant ces patterns seront logges."));
+                NotificationUtil.send(ctx, NotificationType.SUCCESS, "Filtre debug: " + String.join(", ", patterns));
+                NotificationUtil.send(ctx, NotificationType.INFO, "Seuls les blocs contenant ces patterns seront logges.");
             }
 
             return CompletableFuture.completedFuture(null);
@@ -1600,7 +1603,7 @@ public class DirectCommands {
                 // Inspecter le bloc vise via la selection pos1
                 int[] bounds = plugin.getSelectionManager().getSelectionBounds(player);
                 if (bounds == null) {
-                    ctx.sendMessage(ColorUtil.parse("&cAucune selection. Utilisez /pos1 sur un bloc ou /eblockinfo --block <id>"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection. Utilisez /pos1 sur un bloc ou /eblockinfo --block <id>");
                     return CompletableFuture.completedFuture(null);
                 }
 
@@ -1613,18 +1616,18 @@ public class DirectCommands {
                 try {
                     world = player.getWorld();
                 } catch (Exception e) {
-                    ctx.sendMessage(ColorUtil.parse("&cMonde introuvable"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Monde introuvable");
                     return CompletableFuture.completedFuture(null);
                 }
 
                 if (world == null) {
-                    ctx.sendMessage(ColorUtil.parse("&cMonde introuvable"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Monde introuvable");
                     return CompletableFuture.completedFuture(null);
                 }
 
                 BlockType bt = world.getBlockType(bx, by, bz);
                 if (bt == null || bt == BlockType.EMPTY) {
-                    ctx.sendMessage(ColorUtil.parse("&cAucun bloc a la position (" + bx + ", " + by + ", " + bz + ")"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Aucun bloc a la position (" + bx + ", " + by + ", " + bz + ")");
                     return CompletableFuture.completedFuture(null);
                 }
 
@@ -1652,7 +1655,7 @@ public class DirectCommands {
 
             BlockSizeHelper.BlockSizeInfo info = BlockSizeHelper.getBlockSize(blockId, rotationIndex);
             if (info == null) {
-                ctx.sendMessage(ColorUtil.parse("&cBloc introuvable: " + blockId));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Bloc introuvable: " + blockId);
                 return;
             }
 
@@ -1702,7 +1705,7 @@ public class DirectCommands {
         public CompletableFuture<Void> execute(CommandContext ctx) {
             DebugLogger dbg = DebugLogger.get();
             if (dbg == null) {
-                ctx.sendMessage(ColorUtil.parse("&cDebug logger non initialise"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Debug logger non initialise");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1713,10 +1716,10 @@ public class DirectCommands {
             if ("zip".equals(action)) {
                 java.nio.file.Path zipPath = dbg.zipLogs();
                 if (zipPath != null) {
-                    ctx.sendMessage(ColorUtil.parse("&aLogs zippes: &f" + zipPath.getFileName()));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Logs zippes: " + zipPath.getFileName());
                     ctx.sendMessage(ColorUtil.parse("&7Dossier: &f" + dbg.getLogsDir()));
                 } else {
-                    ctx.sendMessage(ColorUtil.parse("&cErreur lors du zip des logs"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur lors du zip des logs");
                 }
             } else {
                 ctx.sendMessage(ColorUtil.parse("&7Dossier logs: &f" + dbg.getLogsDir()));
@@ -1732,7 +1735,7 @@ public class DirectCommands {
         try {
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, blockTypeArg);
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -1742,12 +1745,12 @@ public class DirectCommands {
             int centerY = (int) pos.getY();
             int centerZ = (int) pos.getZ();
 
-            ctx.sendMessage(ColorUtil.parse("&7Placement de " + shape.getDescription() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Placement de " + shape.getDescription() + "...");
             return plugin.getBlockOperations().placeShape(player, shape, centerX, centerY, centerZ, resolved.pattern().toString())
                     .thenAccept(result -> sendResult(ctx, result))
                     .thenApply(v -> null);
         } catch (Exception e) {
-            ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+            NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             return CompletableFuture.completedFuture(null);
         }
     }

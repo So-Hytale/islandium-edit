@@ -9,6 +9,8 @@ import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.permissions.PermissionsModule;
 import com.islandium.core.api.util.ColorUtil;
+import com.islandium.core.api.util.NotificationType;
+import com.islandium.core.api.util.NotificationUtil;
 import com.islandium.edit.EditPlugin;
 import com.islandium.edit.operation.BlockOperations;
 import com.islandium.edit.shape.*;
@@ -138,9 +140,9 @@ public class EditCommand extends AbstractCommand {
 
     static void sendOperationResult(CommandContext ctx, BlockOperations.OperationResult result) {
         if (result.success()) {
-            ctx.sendMessage(ColorUtil.parse("&a" + result.message() + " &7(" + result.blocksAffected() + " blocs)"));
+            NotificationUtil.send(ctx, NotificationType.SUCCESS, result.message(), result.blocksAffected() + " blocs");
         } else {
-            ctx.sendMessage(ColorUtil.parse("&c" + result.message()));
+            NotificationUtil.send(ctx, NotificationType.ERROR, result.message());
         }
     }
 
@@ -160,21 +162,21 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!checkEditPermission(player, "islandium.edit.wand")) {
-                ctx.sendMessage(ColorUtil.parse("&cVous n'avez pas la permission"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Vous n'avez pas la permission");
                 return CompletableFuture.completedFuture(null);
             }
 
             try {
                 var inventory = player.getInventory();
                 if (inventory == null) {
-                    ctx.sendMessage(ColorUtil.parse("&cErreur: inventaire introuvable"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: inventaire introuvable");
                     return CompletableFuture.completedFuture(null);
                 }
 
                 // Utiliser la hotbar au lieu du storage
                 var hotbar = inventory.getHotbar();
                 if (hotbar == null) {
-                    ctx.sendMessage(ColorUtil.parse("&cErreur: hotbar introuvable"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: hotbar introuvable");
                     return CompletableFuture.completedFuture(null);
                 }
 
@@ -185,13 +187,12 @@ public class EditCommand extends AbstractCommand {
                 var transaction = hotbar.addItemStack(wand);
 
                 if (transaction.succeeded()) {
-                    ctx.sendMessage(ColorUtil.parse("&aWand ajoutee a votre hotbar!"));
-                    ctx.sendMessage(ColorUtil.parse("&7Clic gauche = Pos1, Clic droit = Pos2"));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Wand ajoutee a votre hotbar!", "Clic gauche = Pos1, Clic droit = Pos2");
                 } else {
-                    ctx.sendMessage(ColorUtil.parse("&cHotbar pleine! Liberez un slot."));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Hotbar pleine! Liberez un slot.");
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
                 e.printStackTrace();
             }
             return CompletableFuture.completedFuture(null);
@@ -218,14 +219,14 @@ public class EditCommand extends AbstractCommand {
                         (int) pos.getX(), (int) pos.getY(), (int) pos.getZ());
 
                 if (plugin.getSelectionManager().setPos1(player, vec)) {
-                    ctx.sendMessage(ColorUtil.parse("&aPosition 1 definie: &f" + vec.getX() + ", " + vec.getY() + ", " + vec.getZ()));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Position 1 definie: " + vec.getX() + ", " + vec.getY() + ", " + vec.getZ());
                     if (plugin.getSelectionManager().hasValidSelection(player)) {
                         long volume = plugin.getSelectionManager().getVolume(player);
-                        ctx.sendMessage(ColorUtil.parse("&7Selection: " + volume + " blocs"));
+                        NotificationUtil.send(ctx, NotificationType.INFO, "Selection: " + volume + " blocs");
                     }
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -251,14 +252,14 @@ public class EditCommand extends AbstractCommand {
                         (int) pos.getX(), (int) pos.getY(), (int) pos.getZ());
 
                 if (plugin.getSelectionManager().setPos2(player, vec)) {
-                    ctx.sendMessage(ColorUtil.parse("&aPosition 2 definie: &f" + vec.getX() + ", " + vec.getY() + ", " + vec.getZ()));
+                    NotificationUtil.send(ctx, NotificationType.SUCCESS, "Position 2 definie: " + vec.getX() + ", " + vec.getY() + ", " + vec.getZ());
                     if (plugin.getSelectionManager().hasValidSelection(player)) {
                         long volume = plugin.getSelectionManager().getVolume(player);
-                        ctx.sendMessage(ColorUtil.parse("&7Selection: " + volume + " blocs"));
+                        NotificationUtil.send(ctx, NotificationType.INFO, "Selection: " + volume + " blocs");
                     }
                 }
             } catch (Exception e) {
-                ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -281,18 +282,18 @@ public class EditCommand extends AbstractCommand {
             String blockTypeArg = ctx.get(blockArg);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             // Résoudre le pattern (supporte 20%grass,80%stone)
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, blockTypeArg);
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplissage avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplissage avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().fill(player, resolved.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -317,23 +318,23 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             // Résoudre les types de blocs (from = simple, to = pattern)
             var resolvedFrom = plugin.getBlockOperations().resolveBlockTypeWithError(player, ctx.get(fromArg));
             if (!resolvedFrom.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[from] " + resolvedFrom.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[from] " + resolvedFrom.error());
                 return CompletableFuture.completedFuture(null);
             }
             var resolvedTo = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(toArg));
             if (!resolvedTo.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[to] " + resolvedTo.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[to] " + resolvedTo.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplacement " + resolvedFrom.blockType() + " -> " + resolvedTo.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplacement " + resolvedFrom.blockType() + " -> " + resolvedTo.pattern() + "...");
             return plugin.getBlockOperations().replace(player, resolvedFrom.blockType(), resolvedTo.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -356,17 +357,17 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation des murs avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation des murs avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().walls(player, resolved.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -389,17 +390,17 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation du sol avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation du sol avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().floor(player, resolved.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -423,17 +424,17 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation du plafond avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation du plafond avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().ceiling(player, resolved.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -456,17 +457,17 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Creation du contour avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Creation du contour avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().outline(player, resolved.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -487,11 +488,11 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Vidage en cours..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Vidage en cours...");
             return plugin.getBlockOperations().fill(player, "air")
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -512,11 +513,11 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Copie en cours..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Copie en cours...");
             return plugin.getClipboardOperations().copy(player)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -537,11 +538,11 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Coupe en cours..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Coupe en cours...");
 
             // D'abord copier (async), puis vider (async)
             return plugin.getClipboardOperations().copy(player)
@@ -557,7 +558,7 @@ public class EditCommand extends AbstractCommand {
                         return plugin.getBlockOperations().fill(player, "air")
                                 .thenAccept(clearResult -> {
                                     if (clearResult.success()) {
-                                        ctx.sendMessage(ColorUtil.parse("&aCoupe terminee: " + copiedBlocks + " blocs"));
+                                        NotificationUtil.send(ctx, NotificationType.SUCCESS, "Coupe terminee", copiedBlocks + " blocs");
                                     } else {
                                         sendOperationResult(ctx, clearResult);
                                     }
@@ -583,14 +584,14 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getClipboardOperations().hasClipboard(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cClipboard vide. Utilisez /edit copy d'abord."));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Clipboard vide. Utilisez /edit copy d'abord.");
                 return CompletableFuture.completedFuture(null);
             }
 
             // /edit paste --a true  -> skip air
             boolean skipAir = Boolean.TRUE.equals(ctx.get(skipAirArg));
 
-            ctx.sendMessage(ColorUtil.parse("&7Collage en cours" + (skipAir ? " (sans air)" : "") + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Collage en cours" + (skipAir ? " (sans air)" : "") + "...");
             return plugin.getClipboardOperations().paste(player, skipAir)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -639,7 +640,7 @@ public class EditCommand extends AbstractCommand {
             if (axis != null && !axis.isEmpty()) {
                 String axisLower = axis.toLowerCase();
                 if (!axisLower.equals("x") && !axisLower.equals("y") && !axisLower.equals("z")) {
-                    ctx.sendMessage(ColorUtil.parse("&cAxe invalide! Utiliser: x, y ou z"));
+                    NotificationUtil.send(ctx, NotificationType.ERROR, "Axe invalide! Utiliser: x, y ou z");
                     return CompletableFuture.completedFuture(null);
                 }
                 BlockOperations.OperationResult result = plugin.getClipboardOperations().flip(player, axisLower);
@@ -650,7 +651,7 @@ public class EditCommand extends AbstractCommand {
             // Sinon, détecter l'axe automatiquement via la position de copie du clipboard
             BlockOperations.OperationResult result = plugin.getClipboardOperations().flipAuto(player);
             if (result.success()) {
-                ctx.sendMessage(ColorUtil.parse("&7Axe auto (position copie): " + result.message().split(" ")[3]));
+                NotificationUtil.send(ctx, NotificationType.INFO, "Axe auto (position copie): " + result.message().split(" ")[3]);
             }
             sendOperationResult(ctx, result);
             return CompletableFuture.completedFuture(null);
@@ -670,7 +671,7 @@ public class EditCommand extends AbstractCommand {
             if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
             Player player = ctx.senderAs(Player.class);
 
-            ctx.sendMessage(ColorUtil.parse("&7Annulation en cours..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Annulation en cours...");
             return plugin.getBlockOperations().undo(player)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -690,7 +691,7 @@ public class EditCommand extends AbstractCommand {
             if (!ctx.isPlayer()) return CompletableFuture.completedFuture(null);
             Player player = ctx.senderAs(Player.class);
 
-            ctx.sendMessage(ColorUtil.parse("&7Refaire en cours..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Refaire en cours...");
             return plugin.getBlockOperations().redo(player)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -718,7 +719,7 @@ public class EditCommand extends AbstractCommand {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -753,7 +754,7 @@ public class EditCommand extends AbstractCommand {
             int height = ctx.get(heightArg);
 
             if (radius < 1 || radius > 100 || height < 1 || height > 256) {
-                ctx.sendMessage(ColorUtil.parse("&cValeurs invalides (rayon: 1-100, hauteur: 1-256)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Valeurs invalides (rayon: 1-100, hauteur: 1-256)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -783,7 +784,7 @@ public class EditCommand extends AbstractCommand {
 
             int size = ctx.get(sizeArg);
             if (size < 1 || size > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cTaille invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Taille invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -817,7 +818,7 @@ public class EditCommand extends AbstractCommand {
             int height = ctx.get(heightArg);
 
             if (radius < 1 || radius > 100 || height < 1 || height > 256) {
-                ctx.sendMessage(ColorUtil.parse("&cValeurs invalides (rayon: 1-100, hauteur: 1-256)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Valeurs invalides (rayon: 1-100, hauteur: 1-256)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -847,7 +848,7 @@ public class EditCommand extends AbstractCommand {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -870,7 +871,7 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -881,8 +882,7 @@ public class EditCommand extends AbstractCommand {
                 int width = bounds[3] - bounds[0] + 1;
                 int height = bounds[4] - bounds[1] + 1;
                 int depth = bounds[5] - bounds[2] + 1;
-                ctx.sendMessage(ColorUtil.parse("&aSelection: &f" + width + " x " + height + " x " + depth));
-                ctx.sendMessage(ColorUtil.parse("&aVolume: &f" + volume + " blocs"));
+                NotificationUtil.send(ctx, NotificationType.SUCCESS, "Selection: " + width + " x " + height + " x " + depth, "Volume: " + volume + " blocs");
             }
             return CompletableFuture.completedFuture(null);
         }
@@ -904,13 +904,13 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -919,7 +919,7 @@ public class EditCommand extends AbstractCommand {
             var pos = transform.getPosition();
             int yLevel = (int) pos.getY();
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplissage de l'air a Y=" + yLevel + " avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplissage de l'air a Y=" + yLevel + " avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().fillAirAtLevel(player, resolved.pattern().toString(), yLevel)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -944,19 +944,19 @@ public class EditCommand extends AbstractCommand {
             Player player = ctx.senderAs(Player.class);
 
             if (!plugin.getSelectionManager().hasValidSelection(player)) {
-                ctx.sendMessage(ColorUtil.parse("&cAucune selection definie"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Aucune selection definie");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolved = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(blockArg));
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
 
             int depth = ctx.get(depthArg);
             if (depth < 1 || depth > 256) {
-                ctx.sendMessage(ColorUtil.parse("&cProfondeur invalide (1-256)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Profondeur invalide (1-256)");
                 return CompletableFuture.completedFuture(null);
             }
 
@@ -965,7 +965,7 @@ public class EditCommand extends AbstractCommand {
             var pos = transform.getPosition();
             int yStart = (int) pos.getY();
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplissage de l'air de Y=" + yStart + " a Y=" + (yStart - depth) + " avec " + resolved.pattern() + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplissage de l'air de Y=" + yStart + " a Y=" + (yStart - depth) + " avec " + resolved.pattern() + "...");
             return plugin.getBlockOperations().fillAirRange(player, resolved.pattern().toString(), yStart, depth)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -993,23 +993,23 @@ public class EditCommand extends AbstractCommand {
 
             int radius = ctx.get(radiusArg);
             if (radius < 1 || radius > 100) {
-                ctx.sendMessage(ColorUtil.parse("&cRayon invalide (1-100)"));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "Rayon invalide (1-100)");
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolvedFrom = plugin.getBlockOperations().resolveBlockTypeWithError(player, ctx.get(fromArg));
             if (!resolvedFrom.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[from] " + resolvedFrom.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[from] " + resolvedFrom.error());
                 return CompletableFuture.completedFuture(null);
             }
 
             var resolvedTo = plugin.getBlockOperations().resolvePatternWithError(player, ctx.get(toArg));
             if (!resolvedTo.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c[to] " + resolvedTo.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, "[to] " + resolvedTo.error());
                 return CompletableFuture.completedFuture(null);
             }
 
-            ctx.sendMessage(ColorUtil.parse("&7Remplacement " + resolvedFrom.blockType() + " -> " + resolvedTo.pattern() + " (rayon " + radius + ")..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Remplacement " + resolvedFrom.blockType() + " -> " + resolvedTo.pattern() + " (rayon " + radius + ")...");
             return plugin.getBlockOperations().replaceNear(player, radius, resolvedFrom.blockType(), resolvedTo.pattern().toString())
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
@@ -1047,7 +1047,7 @@ public class EditCommand extends AbstractCommand {
             // Résoudre le type de bloc (hand, *, ou ID direct)
             var resolved = plugin.getBlockOperations().resolveBlockTypeWithError(player, blockTypeArg);
             if (!resolved.isValid()) {
-                ctx.sendMessage(ColorUtil.parse("&c" + resolved.error()));
+                NotificationUtil.send(ctx, NotificationType.ERROR, resolved.error());
                 return CompletableFuture.completedFuture(null);
             }
             String blockType = resolved.blockType();
@@ -1058,13 +1058,13 @@ public class EditCommand extends AbstractCommand {
             int centerY = (int) pos.getY();
             int centerZ = (int) pos.getZ();
 
-            ctx.sendMessage(ColorUtil.parse("&7Placement de " + shape.getDescription() + " avec " + blockType + "..."));
+            NotificationUtil.send(ctx, NotificationType.INFO, "Placement de " + shape.getDescription() + " avec " + blockType + "...");
 
             return plugin.getBlockOperations().placeShape(player, shape, centerX, centerY, centerZ, blockType)
                     .thenAccept(result -> sendOperationResult(ctx, result))
                     .thenApply(v -> null);
         } catch (Exception e) {
-            ctx.sendMessage(ColorUtil.parse("&cErreur: " + e.getMessage()));
+            NotificationUtil.send(ctx, NotificationType.ERROR, "Erreur: " + e.getMessage());
             return CompletableFuture.completedFuture(null);
         }
     }
