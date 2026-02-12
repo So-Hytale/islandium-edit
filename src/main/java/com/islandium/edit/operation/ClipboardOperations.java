@@ -374,17 +374,18 @@ public class ClipboardOperations {
                             if (flipX) {
                                 if (origYaw == transYaw && cD > 1) {
                                     // Lit (cD>1) : yaw inchangé, compenser position X
-                                    // Le miroir X inverse les coordonnées X. Le width du lit
-                                    // pointe dans une direction qu'il faut "réancrer".
-                                    // yaw0: W=+X → origin doit reculer de cW-1 en X
-                                    // yaw2: W=-X → origin doit avancer de cW-1 en X
-                                    // yaw1: W=+Z (pas affecté), D=-X → reculer de cD-1 en X
-                                    // yaw3: W=-Z (pas affecté), D=+X → avancer de cD-1 en X... non
+                                    // Le miroir X inverse les coordonnées X.
+                                    // On doit compenser pour Width (si W est sur X) ET Depth (si D est sur X).
+                                    // yaw0: W=+X → compenser cW-1 | D=+Z → pas sur X
+                                    // yaw1: W=+Z → pas sur X       | D=-X → compenser cD-1
+                                    // yaw2: W=-X → compenser cW-1  | D=-Z → pas sur X
+                                    // yaw3: W=-Z → pas sur X       | D=+X → compenser cD-1
                                     if (origYaw == 0) worldX -= (cW - 1);
                                     else if (origYaw == 2) worldX += (cW - 1);
+                                    else if (origYaw == 1) worldX += (cD - 1);
+                                    else if (origYaw == 3) worldX -= (cD - 1);
                                 } else if (origYaw != transYaw) {
                                     // Banc (cD==1) : yaw swappé, pas de compensation
-                                    // (rien à faire, le swap gère tout)
                                 }
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
@@ -398,12 +399,15 @@ public class ClipboardOperations {
                                 if (origYaw == transYaw && cD > 1) {
                                     // Lit (cD>1) : yaw inchangé, compenser position Z
                                     // Le miroir Z inverse les coordonnées Z.
-                                    // yaw1: W=+Z → origin doit reculer de cW-1 en Z
-                                    // yaw3: W=-Z → origin doit avancer de cW-1 en Z
-                                    // yaw0: W=+X (pas affecté), D=+Z → reculer de cD-1 en Z
-                                    // yaw2: W=-X (pas affecté), D=-Z → avancer de cD-1 en Z... non
+                                    // On doit compenser pour Width (si W est sur Z) ET Depth (si D est sur Z).
+                                    // yaw0: W=+X → pas sur Z       | D=+Z → compenser cD-1
+                                    // yaw1: W=+Z → compenser cW-1  | D=-X → pas sur Z
+                                    // yaw2: W=-X → pas sur Z       | D=-Z → compenser cD-1
+                                    // yaw3: W=-Z → compenser cW-1  | D=+X → pas sur Z
                                     if (origYaw == 1) worldZ -= (cW - 1);
                                     else if (origYaw == 3) worldZ += (cW - 1);
+                                    else if (origYaw == 0) worldZ -= (cD - 1);
+                                    else if (origYaw == 2) worldZ += (cD - 1);
                                 } else if (origYaw != transYaw) {
                                     // Banc (cD==1) : yaw swappé, pas de compensation
                                 }
