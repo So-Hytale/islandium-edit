@@ -378,10 +378,14 @@ public class ClipboardOperations {
                                     // yaw2: W=-X → worldX += (cW-1)
                                     if (origYaw == 0) worldX -= (cW - 1);
                                     else if (origYaw == 2) worldX += (cW - 1);
+                                } else if (origYaw != transYaw && cD > 1) {
+                                    // Lit (cD>1), yaw swappé 1<->3 (depth sur X) : compenser width sur Z
+                                    // Le swap change la direction du width (W) sur l'axe Z
+                                    // origYaw1→transYaw3: W passe de +Z à -Z → worldZ -= (cW-1)
+                                    // origYaw3→transYaw1: W passe de -Z à +Z → worldZ += (cW-1)
+                                    if (origYaw == 1) worldZ -= (cW - 1);
+                                    else if (origYaw == 3) worldZ += (cW - 1);
                                 }
-                                // Si origYaw != transYaw : yaw swappé (depth sur X), pas de compensation
-                                // nécessaire car le swap de direction gère le depth et le width est sur Z
-                                // (non affecté par le miroir X)
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
                                             + " origYaw=" + origYaw + " transYaw=" + transYaw
@@ -397,10 +401,14 @@ public class ClipboardOperations {
                                     // yaw3: W=-Z → worldZ += (cW-1)
                                     if (origYaw == 1) worldZ -= (cW - 1);
                                     else if (origYaw == 3) worldZ += (cW - 1);
+                                } else if (origYaw != transYaw && cD > 1) {
+                                    // Lit (cD>1), yaw swappé 0<->2 (depth sur Z) : compenser width sur X
+                                    // Le swap change la direction du width (W) sur l'axe X
+                                    // origYaw0→transYaw2: W passe de +X à -X → worldX -= (cW-1)
+                                    // origYaw2→transYaw0: W passe de -X à +X → worldX += (cW-1)
+                                    if (origYaw == 0) worldX -= (cW - 1);
+                                    else if (origYaw == 2) worldX += (cW - 1);
                                 }
-                                // Si origYaw != transYaw : yaw swappé (depth sur Z), pas de compensation
-                                // nécessaire car le swap de direction gère le depth et le width est sur X
-                                // (non affecté par le miroir Z)
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipZ comp: " + blockType
                                             + " origYaw=" + origYaw + " transYaw=" + transYaw
