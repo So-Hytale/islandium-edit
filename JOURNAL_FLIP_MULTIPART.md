@@ -223,4 +223,181 @@ En placant les multipart en dernier, leurs fillers auto-crees par Hytale ne peuv
 
 **Log ameliore**: Le message de total indique maintenant `(air: N, solids: N, multipart: N)`.
 
-**Resultat**: EN TEST - deploye, en attente de confirmation utilisateur.
+**Resultat**: Bancs OK pour les 3 pastes ! Mais les lits sont decales.
+
+## v14 - Correction d'ordre des passes (2026-02-11 ~13:00)
+**Correction**: L'ordre des passes etait air → solids → multipart, mais les
+multipart doivent etre places APRES les solides pour que les fillers ne soient
+pas ecrases. Correction de l'ordre d'iteration.
+
+**Resultat**: Bancs OK (plus de bancs manquants). Lits decales de 1-2 blocs.
+
+## v15-v16 - Tentatives de compensation position lits
+Plusieurs ajustements de compensation de position pour les lits.
+Problemes : certains yaw compenses, d'autres pas.
+
+## v17 - Ordre definitif AIR → MULTIPART → SOLIDS
+**Changement cle**: L'ordre correct est :
+1. **AIR** — effacer les anciens fillers et blocs
+2. **MULTIPART** — placer les blocs multipart (fillers auto-crees)
+3. **SOLIDS** — placer les blocs normaux (ne peuvent plus ecraser les fillers car tout est deja la)
+
+**Resultat**: Bancs parfaits pour flipX et rot180. Lits encore decales.
+
+## v18 - Premier support de compensation pour lits (cD>1)
+Ajout de compensation cD-1 pour les cas ou le depth est inverse.
+Marche pour flipX mais pas pour flipZ (cas yaw manquants).
+
+---
+
+## v19-v20 - RESOLUTION COMPLETE (session finale)
+
+### Insight fondamental
+Pour les blocs avec **conceptDepth > 1** (lits), le swap de yaw doit etre
+DIFFERENT de celui des blocs cD=1 (bancs).
+
+**Principe** : Swap le yaw **UNIQUEMENT quand la profondeur est alignee avec l'axe du flip**.
+
+Quand la profondeur N'EST PAS sur l'axe du flip, elle n'est pas affectee
+→ pas besoin de swap.
+
+### Tableau de decisions yaw
+
+| Flip | Yaw orig | Direction depth | Sur l'axe du flip ? | Swap ? | Nouveau yaw |
+|------|----------|-----------------|---------------------|--------|-------------|
+| flipX | 0 | D=+Z | Non (Z != X) | Non | 0 |
+| flipX | 1 | D=-X | Oui (X = X) | Oui | 3 |
+| flipX | 2 | D=-Z | Non (Z != X) | Non | 2 |
+| flipX | 3 | D=+X | Oui (X = X) | Oui | 1 |
+| flipZ | 0 | D=+Z | Oui (Z = Z) | Oui | 2 |
+| flipZ | 1 | D=-X | Non (X != Z) | Non | 1 |
+| flipZ | 2 | D=-Z | Oui (Z = Z) | Oui | 0 |
+| flipZ | 3 | D=+X | Non (X != Z) | Non | 3 |
+
+**Comparaison avec cD=1 (banc)** :
+- Banc flipX : swap 0↔2 (width sur X)
+- Banc flipZ : swap 1↔3 (width sur Z)
+- Lit flipX : swap 1↔3 (depth sur X) ← **INVERSE du banc !**
+- Lit flipZ : swap 0↔2 (depth sur Z) ← **INVERSE du banc !**
+
+### Tentative 1 — Yaw correct, position incomplete
+Apres implementation du swap conditionnel, le yaw est correct mais les lits
+sont decales de 1 bloc.
+
+**Cause** : Quand le yaw change, la direction du **width** change aussi. L'origin
+du bloc se deplace d'un coin a l'autre → il faut compenser de `cW-1`.
+
+### Tentative 2 — Compensation des deux cas
+Ajout de compensation width pour les deux cas :
+- Yaw inchange : compenser width sur l'axe du flip
+- Yaw swappe : compenser width sur l'axe transversal
+
+**Erreur** : Les signes de compensation pour le cas swappe etaient inverses.
+
+### Tentative 3 — SOLUTION FINALE (signes corrects)
+
+**Insight mathematique** : Quand le yaw est swappe (ex: 0→2), l'origin du bloc
+se deplace d'un "coin" a l'autre :
+- origYaw=0 → transYaw=2 : origin passe de minX a maxX → `worldX += (cW-1)`
+- origYaw=2 → transYaw=0 : origin passe de maxX a minX → `worldX -= (cW-1)`
+
+Les signes de la tentative 2 etaient l'exact **inverse**.
+
+**Resultat** : **"TOP DU TOP !"** — Tout fonctionne parfaitement pour les 4 pastes.
+
+---
+
+## Algorithme final complet
+
+### 1. transformRotation() — Calcul du nouveau yaw
+
+```
+SI flipX ET multipart:
+    SI cD <= 1 (banc):
+        swap 0 ↔ 2     // width sur X, il faut inverser
+    SI cD > 1 (lit):
+        swap 1 ↔ 3     // depth sur X (yaw 1/3), inverser depth direction
+        // yaw 0/2: depth sur Z, pas affecte par flipX → pas de swap
+
+SI flipZ ET multipart:
+    SI cD <= 1 (banc):
+        swap 1 ↔ 3     // width sur Z, il faut inverser
+    SI cD > 1 (lit):
+        swap 0 ↔ 2     // depth sur Z (yaw 0/2), inverser depth direction
+        // yaw 1/3: depth sur X, pas affecte par flipZ → pas de swap
+```
+
+### 2. Compensation de position — Ajustement coordonnees monde
+
+```
+SI flipX:
+    SI yaw inchange (origYaw == transYaw) ET cD > 1:
+        // Depth pas sur X, compenser width sur X
+        yaw 0: worldX -= (cW - 1)    // W=+X, origin a minX
+        yaw 2: worldX += (cW - 1)    // W=-X, origin a maxX
+
+    SI yaw swappe (origYaw != transYaw) ET cD > 1:
+        // Depth sur X, compenser width sur Z (axe transversal)
+        origYaw 1 → 3: worldZ += (cW - 1)  // origin: minZ → maxZ
+        origYaw 3 → 1: worldZ -= (cW - 1)  // origin: maxZ → minZ
+
+SI flipZ:
+    SI yaw inchange (origYaw == transYaw) ET cD > 1:
+        // Depth pas sur Z, compenser width sur Z
+        yaw 1: worldZ -= (cW - 1)    // W=+Z, origin a minZ
+        yaw 3: worldZ += (cW - 1)    // W=-Z, origin a maxZ
+
+    SI yaw swappe (origYaw != transYaw) ET cD > 1:
+        // Depth sur Z, compenser width sur X (axe transversal)
+        origYaw 0 → 2: worldX += (cW - 1)  // origin: minX → maxX
+        origYaw 2 → 0: worldX -= (cW - 1)  // origin: maxX → minX
+```
+
+### 3. Passes de placement
+
+```
+Passe 1: AIR     — Effacer tous les blocs de la zone
+Passe 2: MULTIPART — Placer les blocs multipart (fillers auto-crees)
+Passe 3: SOLIDS    — Placer les blocs normaux 1x1x1
+```
+
+---
+
+## Explication intuitive
+
+### Pourquoi le yaw conditionnel ?
+Un lit (cD=3) a yaw=0 a sa profondeur en +Z. Si on fait un flipX (miroir X),
+l'axe Z n'est pas affecte → la profondeur reste dans la bonne direction →
+pas besoin de swap.
+
+Mais si ce lit est a yaw=1, la profondeur va en -X. Un flipX inverse l'axe X,
+donc la profondeur doit pointer dans l'autre direction → swap 1↔3.
+
+### Pourquoi la compensation de position ?
+Quand on place un lit a yaw=0, l'origin est au coin (minX, minZ) et les fillers
+s'etendent vers +X et +Z. Apres un flipX sans swap (yaw reste 0), le transform
+a inverse la position sur X. La largeur du bloc (cW=2) fait que l'origin est
+decalee → on compense avec `worldX -= (cW-1)`.
+
+Quand le yaw est swappe (ex: flipZ, yaw 0→2), le width change de direction
+(de +X a -X). L'origin passe du coin minX au coin maxX → on compense
+avec `worldX += (cW-1)`.
+
+---
+
+## Lecons apprises
+
+1. **Ne PAS copier les swaps entre cD=1 et cD>1** — logique INVERSE
+2. **La compensation a DEUX cas** : yaw inchange + yaw swappe
+3. **Les signes dependent du mouvement de l'origin** : min→max = positif, max→min = negatif
+4. **Tester les 4 yaw x 2 flips** = 8 combinaisons minimum
+5. **Les fillers n'ont pas besoin d'etre geres** — `world.setBlock()` les recree
+6. **Utiliser dimensions conceptuelles (yaw=0)** — `getBlockSize(blockType, 0)`
+7. **Ordre des passes** : AIR → MULTIPART → SOLIDS pour eviter les collisions de fillers
+
+## Fichiers modifies
+
+| Fichier | Description |
+|---------|-------------|
+| `ClipboardOperations.java` | Logique principale paste/flip — `transformRotation()` + compensation position |
+| `BlockSizeHelper.java` | Utilitaire pour obtenir les dimensions a yaw=0 (reference seulement) |
