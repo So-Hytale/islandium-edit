@@ -949,15 +949,16 @@ public class ClipboardOperations {
         if (flipX) {
             if (isMultiPart) {
                 // Multi-part flipX:
-                //   - swap 0<->2 TOUJOURS (width en X s'inverse = axe miroir)
-                //   - swap 1<->3 SEULEMENT si conceptDepth > 1 (depth en X s'inverse)
-                //     Si cD=1, pas besoin d'inverser le depth (1 seul bloc)
+                // Pour cD==1 (banc 2x1x1): swap 0<->2 suffit (depth trivial, pas d'effet secondaire)
+                // Pour cD>1 (lit 2x2x3): NE PAS swapper le yaw (sinon tête/pieds inversés).
+                //   Le miroir X est géré par compensation de position dans le paste.
                 BlockSizeHelper.BlockSizeInfo bsi = BlockSizeHelper.getBlockSize(blockType, 0);
                 int cD = bsi != null ? bsi.gridDepth() : 1;
-                if (yaw == 0) yaw = 2;
-                else if (yaw == 2) yaw = 0;
-                else if (cD > 1 && yaw == 1) yaw = 3;
-                else if (cD > 1 && yaw == 3) yaw = 1;
+                if (cD <= 1) {
+                    // Blocs simples (banc): swap axe X
+                    if (yaw == 0) yaw = 2;
+                    else if (yaw == 2) yaw = 0;
+                }
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "x");
                 if (nativeYaw >= 0) {
@@ -989,15 +990,16 @@ public class ClipboardOperations {
         if (flipZ) {
             if (isMultiPart) {
                 // Multi-part flipZ:
-                //   - swap 1<->3 TOUJOURS (width en Z s'inverse = axe miroir)
-                //   - swap 0<->2 SEULEMENT si conceptDepth > 1 (depth en Z s'inverse)
-                //     Si cD=1, pas besoin d'inverser le depth (1 seul bloc)
+                // Pour cD==1 (banc 2x1x1): swap 1<->3 suffit (depth trivial)
+                // Pour cD>1 (lit 2x2x3): NE PAS swapper le yaw (sinon tête/pieds inversés).
+                //   Le miroir Z est géré par compensation de position dans le paste.
                 BlockSizeHelper.BlockSizeInfo bsi = BlockSizeHelper.getBlockSize(blockType, 0);
                 int cD = bsi != null ? bsi.gridDepth() : 1;
-                if (yaw == 1) yaw = 3;
-                else if (yaw == 3) yaw = 1;
-                else if (cD > 1 && yaw == 0) yaw = 2;
-                else if (cD > 1 && yaw == 2) yaw = 0;
+                if (cD <= 1) {
+                    // Blocs simples (banc): swap axe Z
+                    if (yaw == 1) yaw = 3;
+                    else if (yaw == 3) yaw = 1;
+                }
             } else if (useNativeFlip) {
                 int nativeYaw = BlockSizeHelper.flipYawViaApi(blockType, yaw, "z");
                 if (nativeYaw >= 0) {
