@@ -280,14 +280,17 @@ public class ClipboardOperations {
         int clipHeight = clipboard.getHeight();
         int clipDepth = clipboard.getDepth();
 
-        // === Construire les listes de blocs en 3 passes : AIR, SOLIDES, MULTIPART ===
+        // === Construire les listes de blocs en 3 passes : AIR, MULTIPART, SOLIDES ===
         // 1) Air d'abord pour nettoyer la zone
-        // 2) Solides non-multipart (sol, murs, etc.) ensuite
-        // 3) Multipart en DERNIER (bancs, lits, lanternes...)
+        // 2) Multipart ensuite (bancs, lits, lanternes...)
+        // 3) Solides non-multipart EN DERNIER (sol, murs, etc.)
         //
-        // L'ordre est crucial : si un bloc de sol est placé APRÈS un banc,
-        // il écrase le filler auto-créé par Hytale, ce qui détruit le banc entier.
-        // En plaçant les multipart en dernier, leurs fillers ne sont jamais écrasés.
+        // L'ordre est crucial : world.setBlock() pour les multipart crée des fillers
+        // temporaires en yaw=0 (+X, +Z). chunk.setBlock() corrige la rotation de
+        // l'origin mais NE relocalise PAS les fillers. Ces fillers incorrects peuvent
+        // écraser des blocs solides. En plaçant les solides EN DERNIER, ils restaurent
+        // naturellement les positions écrasées par les fillers temporaires.
+        // Les multipart fonctionnent visuellement même avec des fillers mal placés.
 
         // Première passe : collecter l'air
         for (int cx = 0; cx < clipWidth; cx++) {
@@ -320,63 +323,10 @@ public class ClipboardOperations {
 
         int airCount = positions.size();
 
-        // Deuxième passe : collecter les blocs solides NON-multipart
-        for (int cx = 0; cx < clipWidth; cx++) {
-            for (int cy = 0; cy < clipHeight; cy++) {
-                for (int cz = 0; cz < clipDepth; cz++) {
-                    String blockType = clipboard.getBlock(cx, cy, cz);
-                    boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
-
-                    if (isAir) continue;
-
-                    // Vérifier si c'est un bloc multipart (sera traité dans la passe 3)
-                    BlockSizeHelper.BlockSizeInfo checkSize = BlockSizeHelper.getBlockSize(blockType, 0);
-                    boolean isMultiPartBlock = checkSize != null && checkSize.isMultiPart();
-                    if (isMultiPartBlock) continue; // Reporté à la passe 3
-
-                    double relX = offsetX + cx;
-                    double relY = offsetY + cy;
-                    double relZ = offsetZ + cz;
-                    double[] transformed = transform.apply(relX, relY, relZ);
-                    for (int i = 0; i < 3; i++) {
-                        double rounded = Math.round(transformed[i]);
-                        if (Math.abs(transformed[i] - rounded) < 1e-8) transformed[i] = rounded;
-                    }
-                    int worldX = playerX + (int) Math.floor(transformed[0]);
-                    int worldY = playerY + (int) Math.floor(transformed[1]);
-                    int worldZ = playerZ + (int) Math.floor(transformed[2]);
-
-                    // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
-                    if (transform.isFlipX() ^ transform.isFlipZ()) {
-                        blockType = transformBlockName(blockType);
-                    }
-
-                    // Récupérer et transformer la rotation
-                    int originalRotation = clipboard.getRotation(cx, cy, cz);
-                    int transformedRotation = transformRotation(originalRotation, transform, blockType);
-
-                    // Pas de compensation multipart ici : les multipart sont dans la passe 3
-
-                    positions.add(new int[]{worldX, worldY, worldZ});
-                    blockTypes.add(blockType);
-                    blockRotations.add(transformedRotation);
-
-                    // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
-                    if (dbg != null && originalRotation != 0 && dbg.matchesBlockFilter(blockType)) {
-                        dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
-                                relX, relY, relZ,
-                                transformed[0], transformed[1], transformed[2],
-                                worldX, worldY, worldZ,
-                                blockType, originalRotation, transformedRotation);
-                    }
-                    debugBlockIndex++;
-                }
-            }
-        }
-
-        int nonMultiPartCount = positions.size() - airCount;
-
-        // Troisième passe : collecter les blocs multipart
+        // Deuxième passe : collecter les blocs multipart (AVANT les solides)
+        // Les multipart sont placés avant les solides car world.setBlock() crée des
+        // fillers temporaires en yaw=0 qui peuvent écraser des positions voisines.
+        // Les solides placés ensuite restaureront ces positions.
         for (int cx = 0; cx < clipWidth; cx++) {
             for (int cy = 0; cy < clipHeight; cy++) {
                 for (int cz = 0; cz < clipDepth; cz++) {
@@ -516,10 +466,10 @@ public class ClipboardOperations {
                                 + " fillers:" + (fillerDirs.isEmpty() ? " NONE" : fillerDirs));
 
                         // Vérifier collisions de fillers avec d'autres multipart déjà dans la liste
-                        for (int pi = airCount + nonMultiPartCount; pi < positions.size() - 1; pi++) {
+                        for (int pi = airCount; pi < positions.size() - 1; pi++) {
                             int[] prevPos = positions.get(pi);
                             if (prevPos[0] == worldX && prevPos[1] == worldY && prevPos[2] == worldZ) {
-                                dbg.log("PASTE", "    !! COLLISION ORIGIN: même position que multipart #" + (pi - airCount - nonMultiPartCount));
+                                dbg.log("PASTE", "    !! COLLISION ORIGIN: même position que multipart #" + (pi - airCount));
                             }
                         }
                     }
@@ -529,18 +479,16 @@ public class ClipboardOperations {
             }
         }
 
-        int multiPartCount = positions.size() - airCount - nonMultiPartCount;
+        int multiPartCount = positions.size() - airCount;
 
-        // === Trier les multiparts par X croissant puis Z croissant ===
-        // world.setBlock() crée toujours les fillers en yaw=0 (direction +X, +Z, +Y).
-        // En triant du plus petit X/Z au plus grand, chaque multipart est placé
-        // AVANT que ses positions filler (+X, +Z) ne soient occupées.
-        // Si un filler temporaire écrase un multipart déjà placé, le world.setBlock()
-        // suivant le remplacera correctement. Les fillers qui écrasent des blocs solides
-        // sont corrigés par la passe 4 (repair).
+        // === Trier les multiparts par X décroissant puis Z décroissant ===
+        // world.setBlock() crée les fillers en yaw=0 (direction +X, +Z, +Y).
+        // En triant du plus grand X/Z au plus petit, les fillers temporaires
+        // (+X, +Z) d'un multipart pointent vers des positions NON occupées par
+        // d'autres multiparts encore à placer (qui ont des X/Z plus petits).
+        // Aucun multipart n'est écrasé par le filler d'un autre.
         if (multiPartCount > 1) {
-            int mpStart = airCount + nonMultiPartCount;
-            int mpEnd = positions.size();
+            int mpStart = airCount;
             // Créer des indices pour trier
             Integer[] mpIndices = new Integer[multiPartCount];
             for (int mi = 0; mi < multiPartCount; mi++) {
@@ -549,12 +497,12 @@ public class ClipboardOperations {
             java.util.Arrays.sort(mpIndices, (a, b) -> {
                 int[] pa = positions.get(a);
                 int[] pb = positions.get(b);
-                // X croissant d'abord
-                if (pa[0] != pb[0]) return Integer.compare(pa[0], pb[0]);
-                // Z croissant ensuite
-                if (pa[2] != pb[2]) return Integer.compare(pa[2], pb[2]);
-                // Y croissant pour départager
-                return Integer.compare(pa[1], pb[1]);
+                // X décroissant d'abord
+                if (pa[0] != pb[0]) return Integer.compare(pb[0], pa[0]);
+                // Z décroissant ensuite
+                if (pa[2] != pb[2]) return Integer.compare(pb[2], pa[2]);
+                // Y décroissant pour départager
+                return Integer.compare(pb[1], pa[1]);
             });
             // Reconstruire les sous-listes triées
             List<int[]> sortedPos = new ArrayList<>(multiPartCount);
@@ -573,7 +521,7 @@ public class ClipboardOperations {
                 blockRotations.set(mpStart + mi, sortedRots.get(mi));
             }
             if (dbg != null) {
-                dbg.log("PASTE", "  [MULTIPART-SORT] Sorted " + multiPartCount + " multiparts by X asc, Z asc");
+                dbg.log("PASTE", "  [MULTIPART-SORT] Sorted " + multiPartCount + " multiparts by X desc, Z desc");
                 for (int mi = 0; mi < multiPartCount; mi++) {
                     int[] p = positions.get(mpStart + mi);
                     dbg.log("PASTE", "    #" + mi + " " + blockTypes.get(mpStart + mi)
@@ -582,79 +530,69 @@ public class ClipboardOperations {
             }
         }
 
-        // === Passe 4 : Réparation des blocs solides écrasés par les fillers temporaires ===
-        // world.setBlock() pour les multiparts crée TOUJOURS les fillers en yaw=0 (+X, +Z, +Y).
-        // Ces fillers temporaires écrasent les blocs solides déjà placés en passe 2.
-        // chunk.setBlock() corrige la rotation du bloc origin mais ne relocalise PAS les fillers.
-        // Solution : re-placer les blocs solides écrasés APRÈS tous les multiparts.
-        int repairCount = 0;
-        {
-            // 1) Construire un index des positions des blocs solides (passe 2)
-            java.util.Map<String, Integer> solidIndex = new java.util.HashMap<>();
-            for (int si = airCount; si < airCount + nonMultiPartCount; si++) {
-                int[] sp = positions.get(si);
-                solidIndex.put(sp[0] + "," + sp[1] + "," + sp[2], si);
-            }
+        // Troisième passe : collecter les blocs solides NON-multipart (APRÈS les multipart)
+        // Les solides sont placés en dernier pour restaurer les positions écrasées par
+        // les fillers temporaires yaw=0 des multipart. Un solide placé sur un filler
+        // restaure le bloc visible sans affecter le multipart (qui fonctionne même
+        // avec des fillers incorrects).
+        for (int cx = 0; cx < clipWidth; cx++) {
+            for (int cy = 0; cy < clipHeight; cy++) {
+                for (int cz = 0; cz < clipDepth; cz++) {
+                    String blockType = clipboard.getBlock(cx, cy, cz);
+                    boolean isAir = blockType == null || "air".equalsIgnoreCase(blockType);
 
-            // 2) Pour chaque multipart, calculer les positions de fillers temporaires (yaw=0)
-            //    et vérifier si elles chevauchent un bloc solide
-            int mpStart = airCount + nonMultiPartCount;
-            int mpEnd = mpStart + multiPartCount;
-            java.util.Set<Integer> solidsToRepair = new java.util.LinkedHashSet<>();
+                    if (isAir) continue;
 
-            for (int mi = mpStart; mi < mpEnd; mi++) {
-                String mpType = blockTypes.get(mi);
-                int[] mpPos = positions.get(mi);
-                BlockSizeHelper.BlockSizeInfo mpSize = BlockSizeHelper.getBlockSize(mpType, 0);
-                if (mpSize == null) continue;
+                    // Seuls les NON-multipart dans cette passe
+                    BlockSizeHelper.BlockSizeInfo checkSize = BlockSizeHelper.getBlockSize(blockType, 0);
+                    boolean isMultiPartBlock = checkSize != null && checkSize.isMultiPart();
+                    if (isMultiPartBlock) continue; // Déjà traité en passe 2
 
-                int gw = mpSize.gridWidth();
-                int gh = mpSize.gridHeight();
-                int gd = mpSize.gridDepth();
-
-                // Fillers temporaires en yaw=0 : +X pour width, +Z pour depth, +Y pour height
-                for (int dx = 0; dx < gw; dx++) {
-                    for (int dy = 0; dy < gh; dy++) {
-                        for (int dz = 0; dz < gd; dz++) {
-                            if (dx == 0 && dy == 0 && dz == 0) continue; // Skip origin
-                            int fx = mpPos[0] + dx;
-                            int fy = mpPos[1] + dy;
-                            int fz = mpPos[2] + dz;
-                            String key = fx + "," + fy + "," + fz;
-                            Integer solidIdx = solidIndex.get(key);
-                            if (solidIdx != null) {
-                                solidsToRepair.add(solidIdx);
-                            }
-                        }
+                    double relX = offsetX + cx;
+                    double relY = offsetY + cy;
+                    double relZ = offsetZ + cz;
+                    double[] transformed = transform.apply(relX, relY, relZ);
+                    for (int i = 0; i < 3; i++) {
+                        double rounded = Math.round(transformed[i]);
+                        if (Math.abs(transformed[i] - rounded) < 1e-8) transformed[i] = rounded;
                     }
-                }
-            }
+                    int worldX = playerX + (int) Math.floor(transformed[0]);
+                    int worldY = playerY + (int) Math.floor(transformed[1]);
+                    int worldZ = playerZ + (int) Math.floor(transformed[2]);
 
-            // 3) Ajouter les blocs solides écrasés à la fin pour re-placement
-            for (int idx : solidsToRepair) {
-                positions.add(positions.get(idx).clone());
-                blockTypes.add(blockTypes.get(idx));
-                blockRotations.add(blockRotations.get(idx));
-                repairCount++;
-            }
+                    // Transformer le nom du bloc pour les flips (Corner_Left <-> Corner_Right)
+                    if (transform.isFlipX() ^ transform.isFlipZ()) {
+                        blockType = transformBlockName(blockType);
+                    }
 
-            if (dbg != null && repairCount > 0) {
-                dbg.log("PASTE", "  [REPAIR] " + repairCount + " solid blocks will be re-placed after multiparts");
-                for (int idx : solidsToRepair) {
-                    int[] rp = positions.get(idx);
-                    dbg.log("PASTE", "    REPAIR: " + blockTypes.get(idx)
-                            + " (" + rp[0] + "," + rp[1] + "," + rp[2] + ")"
-                            + " rot=" + blockRotations.get(idx));
+                    // Récupérer et transformer la rotation
+                    int originalRotation = clipboard.getRotation(cx, cy, cz);
+                    int transformedRotation = transformRotation(originalRotation, transform, blockType);
+
+                    positions.add(new int[]{worldX, worldY, worldZ});
+                    blockTypes.add(blockType);
+                    blockRotations.add(transformedRotation);
+
+                    // Log uniquement les blocs non-air avec rotation (blocs orientés) + filtre
+                    if (dbg != null && originalRotation != 0 && dbg.matchesBlockFilter(blockType)) {
+                        dbg.logPasteBlock(debugBlockIndex, cx, cy, cz,
+                                relX, relY, relZ,
+                                transformed[0], transformed[1], transformed[2],
+                                worldX, worldY, worldZ,
+                                blockType, originalRotation, transformedRotation);
+                    }
+                    debugBlockIndex++;
                 }
             }
         }
 
+        int nonMultiPartCount = positions.size() - airCount - multiPartCount;
+
         if (dbg != null) {
             dbg.log("PASTE", "Total blocks to paste: " + positions.size()
                     + " (air: " + airCount
-                    + ", solids: " + nonMultiPartCount
                     + ", multipart: " + multiPartCount
-                    + ", repair: " + repairCount + ")");
+                    + ", solids: " + nonMultiPartCount + ")");
         }
 
         CompletableFuture<BlockOperations.OperationResult> future = new CompletableFuture<>();
