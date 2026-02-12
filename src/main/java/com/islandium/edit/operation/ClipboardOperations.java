@@ -374,17 +374,17 @@ public class ClipboardOperations {
                             if (flipX) {
                                 if (origYaw == transYaw && cD > 1) {
                                     // Lit (cD>1), yaw inchangé (depth pas sur X) : compenser width sur X
-                                    // yaw0: W=+X → worldX -= (cW-1)
-                                    // yaw2: W=-X → worldX += (cW-1)
+                                    // yaw0: W=+X, origin à minX → worldX -= (cW-1)
+                                    // yaw2: W=-X, origin à maxX → worldX += (cW-1)
                                     if (origYaw == 0) worldX -= (cW - 1);
                                     else if (origYaw == 2) worldX += (cW - 1);
                                 } else if (origYaw != transYaw && cD > 1) {
                                     // Lit (cD>1), yaw swappé 1<->3 (depth sur X) : compenser width sur Z
-                                    // Le swap change la direction du width (W) sur l'axe Z
-                                    // origYaw1→transYaw3: W passe de +Z à -Z → worldZ -= (cW-1)
-                                    // origYaw3→transYaw1: W passe de -Z à +Z → worldZ += (cW-1)
-                                    if (origYaw == 1) worldZ -= (cW - 1);
-                                    else if (origYaw == 3) worldZ += (cW - 1);
+                                    // Le swap déplace l'origin du coin "min" au coin "max" (ou inversement)
+                                    // origYaw1→transYaw3: origin passe de minZ à maxZ → worldZ += (cW-1)
+                                    // origYaw3→transYaw1: origin passe de maxZ à minZ → worldZ -= (cW-1)
+                                    if (origYaw == 1) worldZ += (cW - 1);
+                                    else if (origYaw == 3) worldZ -= (cW - 1);
                                 }
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipX comp: " + blockType
@@ -403,11 +403,11 @@ public class ClipboardOperations {
                                     else if (origYaw == 3) worldZ += (cW - 1);
                                 } else if (origYaw != transYaw && cD > 1) {
                                     // Lit (cD>1), yaw swappé 0<->2 (depth sur Z) : compenser width sur X
-                                    // Le swap change la direction du width (W) sur l'axe X
-                                    // origYaw0→transYaw2: W passe de +X à -X → worldX -= (cW-1)
-                                    // origYaw2→transYaw0: W passe de -X à +X → worldX += (cW-1)
-                                    if (origYaw == 0) worldX -= (cW - 1);
-                                    else if (origYaw == 2) worldX += (cW - 1);
+                                    // Le swap déplace l'origin du coin "min" au coin "max" (ou inversement)
+                                    // origYaw0→transYaw2: origin passe de minX à maxX → worldX += (cW-1)
+                                    // origYaw2→transYaw0: origin passe de maxX à minX → worldX -= (cW-1)
+                                    if (origYaw == 0) worldX += (cW - 1);
+                                    else if (origYaw == 2) worldX -= (cW - 1);
                                 }
                                 if (dbg != null) {
                                     dbg.log("PASTE", "  Multi-part flipZ comp: " + blockType
