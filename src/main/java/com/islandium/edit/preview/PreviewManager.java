@@ -277,7 +277,8 @@ public class PreviewManager {
             color,
             DISPLAY_DURATION,
             true,  // filled
-            null
+            null,
+            1.0f
         );
     }
 

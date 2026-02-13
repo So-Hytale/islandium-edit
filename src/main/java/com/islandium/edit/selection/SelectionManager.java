@@ -347,7 +347,8 @@ public class SelectionManager {
             SELECTION_COLOR,
             DISPLAY_DURATION,
             true,
-            null
+            null,
+            1.0f
         );
     }
 }
