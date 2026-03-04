@@ -6,6 +6,7 @@ import com.hypixel.hytale.protocol.Vector3f;
 import com.hypixel.hytale.protocol.packets.player.ClearDebugShapes;
 import com.hypixel.hytale.protocol.packets.player.DisplayDebug;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.islandium.edit.EditPlugin;
 import com.islandium.edit.debug.DebugLogger;
 import com.islandium.edit.math.AffineTransform;
@@ -106,14 +107,39 @@ public class PreviewManager {
             stopPreview(playerId);
         }
 
+        // Cacher le World maintenant (sur le thread principal) pour le reutiliser dans les refreshes
+        World world = null;
+        try {
+            world = player.getWorld();
+        } catch (Exception e) {
+            // ignore
+        }
+
         CompletableFuture<PreviewResult> future = new CompletableFuture<>();
 
         // Creer la session de preview avec le holder (inclut la transformation)
-        PreviewSession session = new PreviewSession(player, holder, persistent);
+        PreviewSession session = new PreviewSession(player, holder, persistent, world);
         activePreviews.put(playerId, session);
 
         // Afficher les debug shapes
         sendPreviewShapes(session, future);
+
+        // Mode persistant: demarrer le rafraichissement periodique
+        if (persistent) {
+            ScheduledFuture<?> refreshTask = scheduler.scheduleAtFixedRate(
+                () -> {
+                    try {
+                        refreshPreview(playerId);
+                    } catch (Exception e) {
+                        // Ne pas propager - garder le schedule actif
+                    }
+                },
+                REFRESH_INTERVAL_MS,
+                REFRESH_INTERVAL_MS,
+                TimeUnit.MILLISECONDS
+            );
+            session.setRefreshTask(refreshTask);
+        }
 
         return future;
     }
@@ -136,17 +162,54 @@ public class PreviewManager {
             return;
         }
 
-        // Position du joueur
-        var transformComponent = player.getTransformComponent();
-        if (transformComponent == null) {
-            activePreviews.remove(playerId);
-            if (future != null) {
-                future.complete(PreviewResult.failure("Position joueur introuvable"));
-            }
-            return;
-        }
+        // Lire la position depuis le Store ECS (pas depuis Entity.getTransformComponent() qui peut etre stale
+        // apres un changement d'archetype, ex: ajout/suppression du composant Teleport)
+        double posX = 0, posY = 0, posZ = 0;
+        boolean foundStorePos = false;
+        World world = session.getWorld();
+        if (world != null) {
+            try {
+                var entityStore = world.getEntityStore();
+                var ref = entityStore.getRefFromUUID(playerId);
+                if (ref != null && ref.isValid()) {
+                    var store = entityStore.getStore();
+                    var storeTC = store.getComponent(ref,
+                        com.hypixel.hytale.server.core.modules.entity.component.TransformComponent.getComponentType());
+                    if (storeTC != null) {
+                        var storePos = storeTC.getPosition();
+                        posX = storePos.getX();
+                        posY = storePos.getY();
+                        posZ = storePos.getZ();
+                        foundStorePos = true;
 
-        var pos = transformComponent.getPosition();
+                        // Debug temporaire
+                        var pendingTP = store.getComponent(ref,
+                            com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport.getComponentType());
+                        if (pendingTP != null && !pendingTP.isEmpty()) {
+                            System.out.println("[PREVIEW-DBG] WARNING: PendingTeleport coince! pos=(" + posX + ", " + posY + ", " + posZ + ")");
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("[PREVIEW-DBG] Store TC access failed: " + e.getMessage());
+            }
+        }
+        // Fallback: Entity cached TransformComponent
+        if (!foundStorePos) {
+            var transformComponent = player.getTransformComponent();
+            if (transformComponent == null) {
+                activePreviews.remove(playerId);
+                if (future != null) {
+                    future.complete(PreviewResult.failure("Position joueur introuvable"));
+                }
+                return;
+            }
+            var pos = transformComponent.getPosition();
+            posX = pos.getX();
+            posY = pos.getY();
+            posZ = pos.getZ();
+            System.out.println("[PREVIEW-DBG] FALLBACK cachedTC pos=(" + posX + ", " + posY + ", " + posZ + ")");
+        }
 
         // Utiliser la position figee si disponible, sinon la position du joueur
         int playerX, playerY, playerZ;
@@ -157,9 +220,9 @@ public class PreviewManager {
             playerY = frozen[1];
             playerZ = frozen[2];
         } else {
-            playerX = (int) Math.floor(pos.getX());
-            playerY = (int) Math.floor(pos.getY());
-            playerZ = (int) Math.floor(pos.getZ());
+            playerX = (int) Math.floor(posX);
+            playerY = (int) Math.floor(posY);
+            playerZ = (int) Math.floor(posZ);
         }
 
         ClipboardData clipboard = holder.getClipboard();
@@ -236,25 +299,13 @@ public class PreviewManager {
                     isTransformed, session.isPersistent(), placed);
         }
 
-        // Programmer selon le mode
-        if (session.isPersistent()) {
-            // Mode persistant: rafraichir toutes les secondes
-            ScheduledFuture<?> refreshTask = scheduler.schedule(
-                () -> refreshPreview(playerId),
-                REFRESH_INTERVAL_MS,
-                TimeUnit.MILLISECONDS
-            );
-            session.setRefreshTask(refreshTask);
-
-            String transformInfo = isTransformed ? " (transforme)" : "";
-            if (future != null) {
+        // Completer le future si present
+        String transformInfo = isTransformed ? " (transforme)" : "";
+        if (future != null) {
+            if (session.isPersistent()) {
                 future.complete(PreviewResult.success(
                     "Preview active" + transformInfo + " (/epaste pour coller, /epreview stop pour annuler)", placed));
-            }
-        } else {
-            // Mode temporaire: pas de programmation (les shapes disparaissent naturellement)
-            String transformInfo = isTransformed ? " (transforme)" : "";
-            if (future != null) {
+            } else {
                 future.complete(PreviewResult.success(
                     "Preview affichee" + transformInfo, placed));
             }
@@ -284,32 +335,57 @@ public class PreviewManager {
 
     /**
      * Rafraichit la preview persistante (appele toutes les secondes).
+     * Delegue au world tick thread pour avoir la position joueur a jour.
      */
     @SuppressWarnings("deprecation")
     private void refreshPreview(UUID playerId) {
         PreviewSession session = activePreviews.get(playerId);
         if (session == null || !session.isPersistent()) {
+            System.out.println("[PREVIEW-DBG] refreshPreview: session null or not persistent");
             return;
         }
 
-        // Verifier que le joueur est toujours connecte
         Player player = session.getPlayer();
         if (player == null) {
+            System.out.println("[PREVIEW-DBG] refreshPreview: player null");
             stopPreview(playerId);
             return;
         }
 
-        // Recharger le holder (peut avoir ete modifie par flip/rotate)
-        ClipboardHolder newHolder = plugin.getClipboardOperations().getClipboardHolder(player);
-        if (newHolder == null || newHolder.isEmpty()) {
-            stopPreview(playerId);
-            return;
+        // Utiliser le World cache dans la session (obtenu sur le main thread)
+        World world = session.getWorld();
+        if (world == null) {
+            System.out.println("[PREVIEW-DBG] refreshPreview: cached world null, trying player.getWorld()");
+            try {
+                world = player.getWorld();
+            } catch (Exception e) {
+                System.out.println("[PREVIEW-DBG] refreshPreview: player.getWorld() threw " + e.getMessage());
+                return;
+            }
+            if (world == null) {
+                System.out.println("[PREVIEW-DBG] refreshPreview: player.getWorld() returned null");
+                return;
+            }
         }
-        session.setHolder(newHolder);
 
-        // Rafraichir les cubes debug (figes ou mobiles)
-        // sendPreviewShapes utilise la position figee si disponible
-        sendPreviewShapes(session, null);
+        final World w = world;
+        w.execute(() -> {
+            // Re-verifier la session (peut avoir ete stoppee entre-temps)
+            PreviewSession currentSession = activePreviews.get(playerId);
+            if (currentSession == null || !currentSession.isPersistent()) {
+                return;
+            }
+
+            // Recharger le holder (peut avoir ete modifie par flip/rotate)
+            ClipboardHolder newHolder = plugin.getClipboardOperations().getClipboardHolder(player);
+            if (newHolder == null || newHolder.isEmpty()) {
+                stopPreview(playerId);
+                return;
+            }
+            currentSession.setHolder(newHolder);
+
+            sendPreviewShapes(currentSession, null);
+        });
     }
 
     /**
@@ -362,13 +438,40 @@ public class PreviewManager {
      */
     @SuppressWarnings("deprecation")
     public void freezeAt(@NotNull Player player) {
-        var transformComponent = player.getTransformComponent();
-        if (transformComponent == null) return;
+        int x = 0, y = 0, z = 0;
 
-        var pos = transformComponent.getPosition();
-        int x = (int) Math.floor(pos.getX());
-        int y = (int) Math.floor(pos.getY());
-        int z = (int) Math.floor(pos.getZ());
+        // Lire la position depuis le Store ECS (meme logique que sendPreviewShapes)
+        boolean found = false;
+        try {
+            World world = player.getWorld();
+            if (world != null) {
+                var entityStore = world.getEntityStore();
+                var ref = entityStore.getRefFromUUID(player.getUuid());
+                if (ref != null && ref.isValid()) {
+                    var store = entityStore.getStore();
+                    var storeTC = store.getComponent(ref,
+                        com.hypixel.hytale.server.core.modules.entity.component.TransformComponent.getComponentType());
+                    if (storeTC != null) {
+                        var pos = storeTC.getPosition();
+                        x = (int) Math.floor(pos.getX());
+                        y = (int) Math.floor(pos.getY());
+                        z = (int) Math.floor(pos.getZ());
+                        found = true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // ignore, fallback below
+        }
+
+        if (!found) {
+            var transformComponent = player.getTransformComponent();
+            if (transformComponent == null) return;
+            var pos = transformComponent.getPosition();
+            x = (int) Math.floor(pos.getX());
+            y = (int) Math.floor(pos.getY());
+            z = (int) Math.floor(pos.getZ());
+        }
 
         UUID playerId = player.getUuid();
         frozenPositions.put(playerId, new int[]{x, y, z});
@@ -456,19 +559,25 @@ public class PreviewManager {
      */
     private static class PreviewSession {
         private final Player player;
+        private final World world;
         private ClipboardHolder holder;
         private final boolean persistent;
         private int placedCount;
         private ScheduledFuture<?> refreshTask;
 
-        public PreviewSession(Player player, ClipboardHolder holder, boolean persistent) {
+        public PreviewSession(Player player, ClipboardHolder holder, boolean persistent, World world) {
             this.player = player;
             this.holder = holder;
             this.persistent = persistent;
+            this.world = world;
         }
 
         public Player getPlayer() {
             return player;
+        }
+
+        public World getWorld() {
+            return world;
         }
 
         public ClipboardHolder getHolder() {
