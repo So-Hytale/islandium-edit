@@ -150,6 +150,13 @@ public class PreviewManager {
     @SuppressWarnings("deprecation")
     private void sendPreviewShapes(PreviewSession session, CompletableFuture<PreviewResult> future) {
         Player player = session.getPlayer();
+        if (player == null || player.wasRemoved()) {
+            if (future != null) {
+                future.complete(PreviewResult.failure("Joueur deconnecte"));
+            }
+            return;
+        }
+
         ClipboardHolder holder = session.getHolder();
         UUID playerId = player.getUuid();
 
@@ -182,14 +189,6 @@ public class PreviewManager {
                         posZ = storePos.getZ();
                         foundStorePos = true;
 
-                        // Si un PendingTeleport est coince, le supprimer pour debloquer le mouvement
-                        var pendingTP = store.getComponent(ref,
-                            com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport.getComponentType());
-                        if (pendingTP != null && !pendingTP.isEmpty()) {
-                            store.tryRemoveComponent(ref,
-                                com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport.getComponentType());
-                            System.out.println("[PREVIEW-DBG] Cleared stuck PendingTeleport");
-                        }
                     }
                 }
             } catch (Exception e) {
@@ -198,19 +197,27 @@ public class PreviewManager {
         }
         // Fallback: Entity cached TransformComponent
         if (!foundStorePos) {
-            var transformComponent = player.getTransformComponent();
-            if (transformComponent == null) {
-                activePreviews.remove(playerId);
+            try {
+                var transformComponent = player.getTransformComponent();
+                if (transformComponent == null) {
+                    activePreviews.remove(playerId);
+                    if (future != null) {
+                        future.complete(PreviewResult.failure("Position joueur introuvable"));
+                    }
+                    return;
+                }
+                var pos = transformComponent.getPosition();
+                posX = pos.getX();
+                posY = pos.getY();
+                posZ = pos.getZ();
+            } catch (IllegalStateException e) {
+                // "Called before entity was init" - joueur deconnecte
+                stopPreview(playerId);
                 if (future != null) {
-                    future.complete(PreviewResult.failure("Position joueur introuvable"));
+                    future.complete(PreviewResult.failure("Joueur deconnecte"));
                 }
                 return;
             }
-            var pos = transformComponent.getPosition();
-            posX = pos.getX();
-            posY = pos.getY();
-            posZ = pos.getZ();
-            System.out.println("[PREVIEW-DBG] FALLBACK cachedTC pos=(" + posX + ", " + posY + ", " + posZ + ")");
         }
 
         // Utiliser la position figee si disponible, sinon la position du joueur
