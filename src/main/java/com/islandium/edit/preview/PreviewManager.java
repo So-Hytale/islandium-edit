@@ -182,11 +182,13 @@ public class PreviewManager {
                         posZ = storePos.getZ();
                         foundStorePos = true;
 
-                        // Debug temporaire
+                        // Si un PendingTeleport est coince, le supprimer pour debloquer le mouvement
                         var pendingTP = store.getComponent(ref,
                             com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport.getComponentType());
                         if (pendingTP != null && !pendingTP.isEmpty()) {
-                            System.out.println("[PREVIEW-DBG] WARNING: PendingTeleport coince! pos=(" + posX + ", " + posY + ", " + posZ + ")");
+                            store.tryRemoveComponent(ref,
+                                com.hypixel.hytale.server.core.modules.entity.teleport.PendingTeleport.getComponentType());
+                            System.out.println("[PREVIEW-DBG] Cleared stuck PendingTeleport");
                         }
                     }
                 }
