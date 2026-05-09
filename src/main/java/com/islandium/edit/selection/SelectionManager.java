@@ -346,7 +346,7 @@ public class SelectionManager {
             matrix.asFloatData(),
             SELECTION_COLOR,
             DISPLAY_DURATION,
-            true,
+            (byte) 0,
             null,
             1.0f
         );

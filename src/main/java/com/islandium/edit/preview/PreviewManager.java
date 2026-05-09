@@ -336,7 +336,7 @@ public class PreviewManager {
             matrix.asFloatData(),
             color,
             DISPLAY_DURATION,
-            true,  // filled
+            (byte) 0,
             null,
             1.0f
         );
